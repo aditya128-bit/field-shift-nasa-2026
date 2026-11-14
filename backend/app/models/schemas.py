@@ -54,6 +54,7 @@ class RotationStrategy(BaseModel):
     name: str
     tagline: str
     recommended: bool = False
+    suitability_score: Optional[int] = 85
     crops: List[str]
     annual_water_demand_m3_ha: int
     water_savings_percent: int
@@ -66,6 +67,7 @@ class RotationStrategy(BaseModel):
     net_profit_index: int
     agronomic_rationale: str
     nasa_evidence: str
+    information_gaps: Optional[str] = None
     local_risks_for_review: List[str]
 
 class ForecastDay(BaseModel):

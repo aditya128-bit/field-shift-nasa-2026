@@ -23,6 +23,11 @@ export default function App() {
   });
   const [detectingLocation, setDetectingLocation] = useState(false);
 
+  // Farmer Priorities & Constraints (NASA Challenge Requirement)
+  const [farmerPriority, setFarmerPriority] = useState('water_conservation');
+  const [waterConstraint, setWaterConstraint] = useState('moderate_tubewell');
+  const [machineryAccess, setMachineryAccess] = useState('zero_till_happy_seeder');
+
   const [soilReading, setSoilReading] = useState(null);
   const [soilHistory, setSoilHistory] = useState([]);
   const [nasaObs, setNasaObs] = useState(null);
@@ -98,7 +103,7 @@ export default function App() {
     detectDeviceLocation();
   }, []);
 
-  // Fetch NASA & Agronomy data whenever coordinates change
+  // Fetch NASA & Agronomy data whenever coordinates or farmer constraints change
   const loadDataForLocation = async () => {
     try {
       setLoading(true);
@@ -108,7 +113,7 @@ export default function App() {
         fetchCurrentSoil(),
         fetchSoilHistory(30),
         fetchNasaObservations(location.lat, location.lon),
-        fetchRotationStrategies(location.lat, location.lon),
+        fetchRotationStrategies(location.lat, location.lon, farmerPriority, waterConstraint, machineryAccess),
         fetchForecast(location.lat, location.lon),
         fetchNasaGibs()
       ]);
@@ -129,7 +134,7 @@ export default function App() {
 
   useEffect(() => {
     loadDataForLocation();
-  }, [location.lat, location.lon]);
+  }, [location.lat, location.lon, farmerPriority, waterConstraint, machineryAccess]);
 
   // Real-time WebSocket connection for live telemetry stream
   useEffect(() => {
@@ -219,6 +224,18 @@ export default function App() {
                 strategies={strategies}
                 soilReading={soilReading}
                 nasaObs={nasaObs}
+                location={location}
+                farmerPriority={farmerPriority}
+                setFarmerPriority={setFarmerPriority}
+                waterConstraint={waterConstraint}
+                setWaterConstraint={setWaterConstraint}
+                machineryAccess={machineryAccess}
+                setMachineryAccess={setMachineryAccess}
+                onConstraintChange={(p, w, m) => {
+                  setFarmerPriority(p);
+                  setWaterConstraint(w);
+                  setMachineryAccess(m);
+                }}
               />
             )}
 

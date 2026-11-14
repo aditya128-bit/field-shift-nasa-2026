@@ -24,9 +24,28 @@ export async function fetchNasaGibs() {
   return res.json();
 }
 
-export async function fetchRotationStrategies(lat = 28.6139, lon = 77.2090) {
-  const res = await fetch(`${API_BASE}/rotations/compare?lat=${lat}&lon=${lon}`);
+export async function fetchRotationStrategies(
+  lat = 28.6139,
+  lon = 77.2090,
+  farmerPriority = "water_conservation",
+  waterConstraint = "moderate_tubewell",
+  machineryAccess = "zero_till_happy_seeder"
+) {
+  const params = new URLSearchParams({
+    lat,
+    lon,
+    farmer_priority: farmerPriority,
+    water_constraint: waterConstraint,
+    machinery_access: machineryAccess
+  });
+  const res = await fetch(`${API_BASE}/rotations/compare?${params.toString()}`);
   if (!res.ok) throw new Error("Failed to fetch rotation strategies");
+  return res.json();
+}
+
+export async function fetchScientificWaterBalance(lat = 28.6139, lon = 77.2090) {
+  const res = await fetch(`${API_BASE}/scientific/water-balance?lat=${lat}&lon=${lon}`);
+  if (!res.ok) throw new Error("Failed to fetch scientific water balance");
   return res.json();
 }
 
