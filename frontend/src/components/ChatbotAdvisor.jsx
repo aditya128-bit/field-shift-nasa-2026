@@ -4,12 +4,12 @@ import { Send, Zap, Loader2, MessageSquare, ChevronDown, Bot, User, Globe, Sprou
 const API_BASE = import.meta.env.VITE_API_BASE || '';
 
 const QUICK_QUESTIONS = [
-  'Which crop is suitable for my farm?',
-  'Should I irrigate today?',
-  'Best crop rotation for water saving?',
-  'How to naturally fix soil nitrogen and alkaline pH?',
-  'What is NDVI and what does my field reading mean?',
-  'Organic green manure protocols (Dhaincha)',
+  'Which stage is my crop in now?',
+  'My crop is in flowering stage now',
+  'What fertilizer needed at current stage?',
+  'Check 30-day forecast for my crop',
+  'How does my previous crop affect soil today?',
+  'Should I irrigate today based on 7-day forecast?',
 ];
 
 function FormattedContent({ content }) {
@@ -147,6 +147,7 @@ function ChatBubble({ msg }) {
 }
 
 export default function ChatbotAdvisor({ soilReading, nasaObs, apiKey, initialQuery }) {
+  const [cropInfo, setCropInfo] = useState(null);
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
@@ -158,6 +159,44 @@ export default function ChatbotAdvisor({ soilReading, nasaObs, apiKey, initialQu
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
+
+  // Load persistent crop profile and rotation history
+  const loadCropInfo = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/crop/profile`);
+      if (res.ok) {
+        const data = await res.json();
+        setCropInfo(data);
+      }
+    } catch (e) {
+      console.warn("[Crop Profile Load Notice]", e);
+    }
+  };
+
+  const handleManualStageChange = async (stageName) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/crop/stage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stage: stageName })
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setCropInfo(updated);
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: `✅ **Active Growth Stage Updated:** Your **${updated.name || 'crop'}** is now officially recorded in the **${stageName}** stage.\n\nAll IoT soil thresholds, water deficit alerts, and NASA agrometeorological guidance have been dynamically calibrated for this stage.`,
+          source: 'System Agrometeorology Engine'
+        }]);
+      }
+    } catch (e) {
+      console.error("[Manual Stage Change Error]", e);
+    }
+  };
+
+  useEffect(() => {
+    loadCropInfo();
+  }, []);
 
   useEffect(() => {
     if (initialQuery && initialQuery.trim()) {
@@ -207,6 +246,9 @@ export default function ChatbotAdvisor({ soilReading, nasaObs, apiKey, initialQu
         soil_enrichment_tips: data.soil_enrichment_tips || [],
         suggested_rotations: data.suggested_rotations || []
       }]);
+
+      // Re-fetch crop profile in case the AI or user mutated the active stage
+      loadCropInfo();
     } catch (err) {
       console.error("[Chat Advisor Error]", err);
       setMessages(prev => [...prev, {
@@ -252,6 +294,56 @@ export default function ChatbotAdvisor({ soilReading, nasaObs, apiKey, initialQu
           </span>
         </div>
       </div>
+
+      {/* ── Active Crop & Lifecycle Context Strip ─────── */}
+      {cropInfo && (
+        <div className="rounded-xl px-4 py-3 mb-3 shadow-md flex flex-col md:flex-row md:items-center justify-between gap-3"
+             style={{ background: '#131722', border: '1px solid #1e2538' }}>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2.5">
+              <span className="text-2xl">{cropInfo.emoji || '🌾'}</span>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-white text-sm">
+                    {cropInfo.name || 'Wheat'}
+                  </span>
+                  <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-950/80 border border-emerald-700/80 text-emerald-300">
+                    Day {cropInfo.days_elapsed || 28} of {cropInfo.duration_days || 120}
+                  </span>
+                </div>
+                <div className="text-[11px] text-slate-400">
+                  Sown: <span className="text-slate-200">{cropInfo.sow_date || 'Oct 18, 2026'}</span> • Expected Harvest: <span className="text-slate-200">{cropInfo.expected_harvest || 'Feb 15, 2027'}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Previous rotation legacy */}
+            {cropInfo.rotation_history?.length > 0 && (
+              <div className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] bg-slate-900/90 border border-slate-800 text-slate-300">
+                <span className="text-amber-400 font-semibold">🔄 Previous Crop:</span>
+                <span className="text-slate-200 font-medium">{cropInfo.rotation_history[0].crop}</span>
+                <span className="text-slate-400">({cropInfo.rotation_history[0].season})</span>
+              </div>
+            )}
+          </div>
+
+          {/* Active Stage Quick Selector */}
+          <div className="flex items-center gap-2 self-start md:self-auto">
+            <span className="text-xs text-slate-400 whitespace-nowrap">Active Stage:</span>
+            <select
+              value={cropInfo.active_stage?.name || cropInfo.stages?.[0]?.name || ''}
+              onChange={e => handleManualStageChange(e.target.value)}
+              className="text-xs font-semibold px-2.5 py-1.5 rounded-lg cursor-pointer bg-slate-900 border border-slate-700 text-emerald-300 focus:outline-none focus:border-emerald-500"
+            >
+              {(cropInfo.stages || []).map(s => (
+                <option key={s.name} value={s.name}>
+                  🌱 {s.name} ({s.days} days)
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      )}
 
       {/* ── Quick Questions ──────────────────────────── */}
       <div className="flex flex-wrap gap-2 mb-3">

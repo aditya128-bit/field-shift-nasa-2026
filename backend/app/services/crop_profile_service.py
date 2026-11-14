@@ -146,6 +146,9 @@ CROP_DATABASE: Dict[str, Dict[str, Any]] = {
     }
 }
 
+DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../data"))
+HISTORY_FILE = os.path.join(DATA_DIR, "crop_history.json")
+
 DEFAULT_THRESHOLDS = {
     "soil_moisture_min": 16,
     "soil_moisture_max": 32,
@@ -163,9 +166,66 @@ DEFAULT_THRESHOLDS = {
 
 class CropProfileService:
     def __init__(self):
-        self._current_crop: Optional[str] = None
+        self._current_crop: str = "Wheat"
         self._crop_profile: Optional[Dict] = None
-        self._sow_date: Optional[datetime] = None
+        self._sow_date: datetime = datetime.now() - timedelta(days=28)
+        self._manual_stage: Optional[str] = "Tillering"
+        self._rotation_history: list = [
+            {
+                "crop": "Rice (Basmati Paddy)",
+                "season": "Kharif 2026",
+                "sow_date": (datetime.now() - timedelta(days=145)).strftime("%Y-%m-%d"),
+                "harvest_date": (datetime.now() - timedelta(days=32)).strftime("%Y-%m-%d"),
+                "duration_days": 113,
+                "soil_legacy": "Puddled anaerobic soil created subsoil compaction; depleted Nitrogen to 29 mg/kg; high water extraction"
+            },
+            {
+                "crop": "Summer Moong (Green Gram)",
+                "season": "Zaid 2026",
+                "sow_date": (datetime.now() - timedelta(days=220)).strftime("%Y-%m-%d"),
+                "harvest_date": (datetime.now() - timedelta(days=150)).strftime("%Y-%m-%d"),
+                "duration_days": 70,
+                "soil_legacy": "Leguminous pulse fixed biological Nitrogen (~30 kg N/ha); low water consumption"
+            }
+        ]
+        self._load_state()
+
+    def _load_state(self):
+        os.makedirs(DATA_DIR, exist_ok=True)
+        if os.path.exists(HISTORY_FILE):
+            try:
+                with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    self._current_crop = data.get("current_crop", self._current_crop)
+                    if data.get("sow_date"):
+                        try:
+                            self._sow_date = datetime.fromisoformat(data["sow_date"])
+                        except Exception:
+                            pass
+                    self._manual_stage = data.get("manual_stage", self._manual_stage)
+                    self._crop_profile = data.get("crop_profile", self._crop_profile)
+                    self._rotation_history = data.get("rotation_history", self._rotation_history)
+                    print(f"[CropProfileService] Loaded persistent crop '{self._current_crop}' and {len(self._rotation_history)} previous crop history records.")
+                    return
+            except Exception as e:
+                print(f"[CropProfileService Warning] Failed loading history file: {e}")
+
+        # Initialize default profile if none loaded
+        self.set_crop(self._current_crop, sow_date=self._sow_date.strftime("%Y-%m-%d"), persist=True)
+
+    def _save_state(self):
+        os.makedirs(DATA_DIR, exist_ok=True)
+        try:
+            with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+                json.dump({
+                    "current_crop": self._current_crop,
+                    "sow_date": self._sow_date.strftime("%Y-%m-%d") if self._sow_date else None,
+                    "manual_stage": self._manual_stage,
+                    "crop_profile": self._crop_profile,
+                    "rotation_history": self._rotation_history
+                }, f, indent=2)
+        except Exception as e:
+            print(f"[CropProfileService Error] Failed saving state: {e}")
 
     def _query_llm_for_crop(self, crop_name: str, lat: float = 28.6139, lon: float = 77.2090, user_key: Optional[str] = None) -> Optional[Dict]:
         """
@@ -259,13 +319,29 @@ Respond with PURE JSON ONLY (no markdown fences, no text before or after):
         sow_date: Optional[str] = None,
         lat: float = 28.6139,
         lon: float = 77.2090,
-        user_key: Optional[str] = None
+        user_key: Optional[str] = None,
+        persist: bool = True
     ) -> Dict:
         """
         Set the farmer's current crop. First queries NVIDIA NIM LLM.
         Falls back to scientific database if offline.
+        Archives previous crop into rotation history.
         """
         key = crop_name.lower().replace(" ", "_").replace("-", "_")
+
+        # Archive previous crop if changing crop
+        if self._current_crop and self._current_crop.strip().lower() != crop_name.strip().lower():
+            old_season = (self._crop_profile or {}).get("season", "Previous Season")
+            old_sow = self._sow_date.strftime("%Y-%m-%d") if self._sow_date else (datetime.now() - timedelta(days=120)).strftime("%Y-%m-%d")
+            self._rotation_history.insert(0, {
+                "crop": self._current_crop.title(),
+                "season": old_season,
+                "sow_date": old_sow,
+                "harvest_date": datetime.now().strftime("%Y-%m-%d"),
+                "duration_days": (datetime.now() - (self._sow_date or datetime.now())).days if self._sow_date else 120,
+                "soil_legacy": f"Preceding crop before rotation to {crop_name}. Residual nutrient drawdown and root biomass."
+            })
+            self._rotation_history = self._rotation_history[:6]
 
         # 1. First attempt: Query NVIDIA NIM LLM for live customized ranges
         llm_profile = self._query_llm_for_crop(crop_name, lat=lat, lon=lon, user_key=user_key)
@@ -314,40 +390,84 @@ Respond with PURE JSON ONLY (no markdown fences, no text before or after):
         self._current_crop = crop_name
         self._crop_profile = profile
         self._sow_date = datetime.fromisoformat(sow_date) if sow_date else datetime.now()
+        self._manual_stage = None
+
+        if persist:
+            self._save_state()
 
         return self.get_full_profile()
+
+    def set_growth_stage(self, stage_name: str) -> Dict[str, Any]:
+        """Manually sets/confirms the crop's active growth stage."""
+        self._manual_stage = stage_name.strip()
+        self._save_state()
+        print(f"[CropProfileService] Stage updated to: {self._manual_stage}")
+        return self.get_full_profile()
+
+    def get_history(self) -> list:
+        """Returns the farm's crop rotation history."""
+        return self._rotation_history
 
     def get_full_profile(self) -> Dict:
         if not self._crop_profile:
             return {"status": "no_crop_set", "message": "No crop set. Use POST /api/crop/set"}
 
         profile = self._crop_profile.copy()
+        
         # Compute lifecycle dates
+        active_stage_found = None
         if self._sow_date:
             stages_with_dates = []
             current_date = self._sow_date
+            now = datetime.now()
+            
             for stage in profile.get("stages", []):
-                stages_with_dates.append({
+                stage_start = current_date
+                stage_end = current_date + timedelta(days=stage["days"])
+                
+                # If manual override exists, check if name matches; otherwise check calendar dates
+                if self._manual_stage:
+                    is_active = (self._manual_stage.lower() in stage["name"].lower()) or (stage["name"].lower() in self._manual_stage.lower())
+                else:
+                    is_active = stage_start <= now <= stage_end
+
+                stage_item = {
                     **stage,
-                    "start_date": current_date.strftime("%Y-%m-%d"),
-                    "end_date": (current_date + timedelta(days=stage["days"])).strftime("%Y-%m-%d"),
-                    "is_active": current_date <= datetime.now() <= current_date + timedelta(days=stage["days"]),
-                })
-                current_date += timedelta(days=stage["days"])
+                    "start_date": stage_start.strftime("%Y-%m-%d"),
+                    "end_date": stage_end.strftime("%Y-%m-%d"),
+                    "is_active": is_active,
+                }
+                stages_with_dates.append(stage_item)
+                if is_active and not active_stage_found:
+                    active_stage_found = stage_item
+                current_date = stage_end
+
+            # If no active stage found by date, default to the closest or last
+            if not active_stage_found and stages_with_dates:
+                if self._manual_stage:
+                    active_stage_found = {"name": self._manual_stage, "days": 30, "is_active": True}
+                elif now < self._sow_date:
+                    stages_with_dates[0]["is_active"] = True
+                    active_stage_found = stages_with_dates[0]
+                else:
+                    stages_with_dates[-1]["is_active"] = True
+                    active_stage_found = stages_with_dates[-1]
+
             profile["lifecycle_calendar"] = stages_with_dates
             profile["expected_harvest"] = current_date.strftime("%Y-%m-%d")
-            profile["days_remaining"] = max(0, (current_date - datetime.now()).days)
+            profile["days_remaining"] = max(0, (current_date - now).days)
+            profile["days_elapsed"] = max(0, (now - self._sow_date).days)
 
+        profile["active_stage"] = active_stage_found or {"name": self._manual_stage or "Vegetative", "is_active": True}
         profile["sow_date"] = self._sow_date.strftime("%Y-%m-%d") if self._sow_date else None
         profile["crop_key"] = self._current_crop
+        profile["rotation_history"] = self._rotation_history
         return profile
 
     def get_active_stage(self) -> Optional[Dict]:
         """Return the current growth stage."""
         profile = self.get_full_profile()
-        for stage in profile.get("lifecycle_calendar", []):
-            if stage.get("is_active"):
-                return stage
+        return profile.get("active_stage")
         return None
 
     def evaluate_alerts(self, soil_moisture: float, temp: float, tmax: float, rain_24h: float, ph: float) -> list:

@@ -91,11 +91,58 @@ class NemotronAIService:
         self.base_url = settings.NVIDIA_BASE_URL
         self.model = settings.NVIDIA_MODEL
 
-    def _build_system_prompt(self, soil: SoilReading, nasa: NasaObservation) -> str:
+    def _build_system_prompt(
+        self,
+        soil: SoilReading,
+        nasa: NasaObservation,
+        crop_data: Optional[Dict[str, Any]] = None,
+        crop_history: Optional[List[Dict[str, Any]]] = None,
+        forecast_data: Optional[Dict[str, Any]] = None
+    ) -> str:
+        crop_name = (crop_data or {}).get("name", "Wheat")
+        sow_date = (crop_data or {}).get("sow_date", "Unspecified")
+        days_elapsed = (crop_data or {}).get("days_elapsed", 28)
+        expected_harvest = (crop_data or {}).get("expected_harvest", "In ~90 days")
+        active_stage = (crop_data or {}).get("active_stage", {})
+        active_stage_name = active_stage.get("name", "Tillering / Vegetative")
+        thresh = (crop_data or {}).get("thresholds", {})
+
+        # Format previous crops
+        history_text = "No previous rotation records on file."
+        if crop_history:
+            history_lines = []
+            for h in crop_history[:3]:
+                history_lines.append(
+                    f"   - {h.get('crop', 'Crop')} ({h.get('season', 'Past Season')}, Harvested: {h.get('harvest_date', 'N/A')}): {h.get('soil_legacy', 'Residual nutrient depletion')}"
+                )
+            history_text = "\n".join(history_lines)
+
+        # Format forecast
+        fc_metrics = (forecast_data or {}).get("metrics", {})
+        fc_insights = (forecast_data or {}).get("insights", [])
+        fc_text = (
+            f"   - 30-Day Mean Temperature: {fc_metrics.get('avg_temperature_c', 19.5)}°C\n"
+            f"   - Total 30-Day Rain Forecast: {fc_metrics.get('total_expected_rain_mm', 6.0)} mm\n"
+            f"   - Cumulative Evapotranspiration (ET0): {fc_metrics.get('total_et0_mm', 48.0)} mm\n"
+            f"   - Net Water Balance: {fc_metrics.get('net_water_balance_mm', -42.0)} mm\n"
+            f"   - Heat Stress Days (Tmax >= 38°C): {fc_metrics.get('heat_stress_days', 0)} days\n"
+            f"   - Climatology Risk Level: {fc_metrics.get('overall_risk_level', 'LOW')}\n"
+            f"   - Forecaster Synoptic Note: {'; '.join(fc_insights) if fc_insights else 'Stable winter anticyclone'}"
+        )
+
         return f"""You are the FIELD SHIFT Senior Agrometeorologist & Planetary Earth Observation Scientist at NASA Space Apps 2026.
 
-CURRENT FARM BASELINE & DECADAL SCIENTIFIC OBSERVATIONS:
-1. IN-SITU 8-IN-1 IOT SENSOR GROUND-TRUTH:
+CURRENT FARM BASELINE & GROUND TRUTH:
+1. ACTIVE FARM CROP & LIFECYCLE STAGE:
+   - Current Field Crop: {crop_name} (Sown: {sow_date}, {days_elapsed} days in field)
+   - Active Growth Stage: {active_stage_name} (Expected Harvest: {expected_harvest})
+   - Stage Optimal Soil Moisture: {thresh.get('soil_moisture_min', 18)}% – {thresh.get('soil_moisture_max', 32)}% (Current In-situ: {soil.soil_moisture}%)
+   - Stage Thermal Ceiling: Max {thresh.get('heat_stress_c', 35)}°C (NASA Today Peak: {nasa.temp_max}°C)
+
+2. CROP ROTATION HISTORY & PREVIOUS CROPS (SOIL LEGACY):
+{history_text}
+
+3. IN-SITU 8-IN-1 IOT SENSOR GROUND-TRUTH:
    - Soil Moisture: {soil.soil_moisture}% (Optimal range for alluvial loam: 20-30%)
    - Soil Temperature: {soil.soil_temperature}°C
    - Soil pH: {soil.ph} (Current status: Mildly alkaline alluvial soil; Ideal crop range: 6.5-7.5)
@@ -107,46 +154,62 @@ CURRENT FARM BASELINE & DECADAL SCIENTIFIC OBSERVATIONS:
    - Soil Health Index: {soil.soil_health_index}/100 ({soil.health_status})
    - Active Sensor Diagnostics: {', '.join(soil.alerts) if soil.alerts else 'Optimal'}
 
-2. NASA SATELLITE FLEET & AGROMETEOROLOGICAL INDICATORS:
+4. NASA POWER & SATELLITE 30-DAY TIME-SERIES FORECAST:
+{fc_text}
    - Ambient Temp (T2M): {nasa.temp_2m}°C (Tmax: {nasa.temp_max}°C, Tmin: {nasa.temp_min}°C)
    - NASA SMAP Root-Zone Soil Moisture: {nasa.root_zone_moisture} (Normalized Anomaly: {nasa.soil_moisture_anomaly})
    - NASA GPM IMERG 24h Precipitation: {nasa.precipitation_mm} mm
-   - Solar Irradiance: {nasa.solar_radiation_mj} MJ/m²/day
-   - Wind Speed (WS2M): {nasa.wind_speed} m/s
    - NASA GRACE Groundwater Depletion Rate: -3.2 cm/year equivalent water height across Indo-Gangetic Basin
-   - FAO-56 Penman-Monteith Reference Evapotranspiration (ET0): Computed daily reference water demand
-   - Heat Stress Alert: {'ACTIVE (Tmax >= 38°C)' if nasa.heat_stress_warning else 'Inactive'}
-   - Frost Risk: {'ACTIVE' if nasa.frost_risk_warning else 'Inactive'}
 
-SCIENTIFIC OBJECTIVES & RESPONSE STANDARDS:
-1. Always evaluate the farmer's crop proposal against FAO-56 crop coefficients (Kc), water footprint, and NASA 10-year thermal heatwave risk in March (Tmax >= 36°C).
-2. If soil is alkaline (pH > 7.7) or nitrogen-deficient, prescribe specific NATURAL REGENERATIVE protocols:
-   - Sesbania aculeata (Dhaincha) green manure: 45 days growth, incorporates 80-110 kg N/ha, organic acids neutralize alkaline caliche.
-   - Biofertilizers: Seed inoculation with Rhizobium leguminosarum & Phosphate Solubilizing Bacteria (PSB).
-   - Mulching: Retaining 4-5 t/ha crop residue using Happy Seeder reduces soil evaporation by 32% and cools root zone by 2°C during heatwaves.
-3. Recommend ecological intercropping geometries (e.g. Wheat + Mustard 4:1 row ratio, Chickpea + Linseed, Pearl Millet + Cowpea) to disrupt pest cycles and conserve irrigation.
-4. Maintain a supportive, scientifically grounded tone that empowers farmer judgment without replacing local agricultural extension.
+SCIENTIFIC OBJECTIVES & AGROMETEOROLOGICAL INSTRUCTIONS:
+1. ALWAYS identify and mention the farmer's CURRENT CROP ({crop_name}) and its ACTIVE GROWTH STAGE ({active_stage_name}) in your answers.
+2. If the farmer asks "which stage now crop gone" or asks what stage their crop is in, clearly explain:
+   - Their {crop_name} is in the "{active_stage_name}" stage (Day {days_elapsed} of its lifecycle).
+   - What visible physical characteristics to look for in the field at this stage.
+   - Stage-specific water and nutrition advice.
+3. If the farmer informs you of a stage change (e.g. "my crop is in flowering now" or "crop gone to tillering"), confirm that you have updated their farm record to that stage.
+4. Ground irrigation advice in the NASA 30-day forecast (Total rain forecast: {fc_metrics.get('total_expected_rain_mm', 6.0)} mm; Net balance: {fc_metrics.get('net_water_balance_mm', -42.0)} mm).
+5. Ground soil nutrient advice in the PREVIOUS CROP rotation legacy (e.g. if previous crop was Rice, factor in subsoil compaction and nitrogen drawdown).
+6. Maintain an empowering, scientifically grounded tone that integrates space telemetry with regenerative soil practices (green manure, biochar, compost, intercropping).
 """
 
-    def _fallback_agronomic_engine(self, query: str, soil: SoilReading, nasa: NasaObservation) -> ChatResponse:
+    def _fallback_agronomic_engine(
+        self,
+        query: str,
+        soil: SoilReading,
+        nasa: NasaObservation,
+        crop_data: Optional[Dict[str, Any]] = None,
+        crop_history: Optional[List[Dict[str, Any]]] = None,
+        forecast_data: Optional[Dict[str, Any]] = None
+    ) -> ChatResponse:
         """Intelligent agronomist fallback engine for seamless instant execution."""
         q_lower = query.lower()
         recommendations = []
         soil_tips = []
         rotations = []
 
-        # 1. Natural Soil Enrichment Tips tailored to current readings
-        if soil.ph > 7.7:
-            soil_tips.append("Apply Green Manure (Sesbania aculeata / Dhaincha): Grow for 45 days and plow in before flowering. Its organic acids naturally neutralize alkaline pH (current pH: {0}) and release trapped phosphorus.".format(soil.ph))
-            soil_tips.append("Incorporate Agricultural Gypsum (2.5 t/ha) or Press-mud to displace sodium ions and improve water infiltration.")
-        if soil.nitrogen < 32:
-            soil_tips.append("Seed Inoculation with Rhizobium & Azotobacter bio-culture: Increases atmospheric nitrogen fixation by 25-35 kg N/ha without chemical urea.")
-            soil_tips.append("Top-dress with Well-Decomposed Farmyard Manure (FYM) or Vermicompost (5-8 t/ha) enriched with Trichoderma to prevent fungal root rot.")
-        soil_tips.append("Crop Residue Mulching (Happy Seeder): Retain 4-5 t/ha of crop straw on field surface. Suppresses weeds, reduces soil evaporation by 30%, and adds ~0.08% organic carbon annually.")
+        crop_name = (crop_data or {}).get("name", "Wheat")
+        sow_date = (crop_data or {}).get("sow_date", "recent")
+        days_elapsed = (crop_data or {}).get("days_elapsed", 28)
+        active_st = (crop_data or {}).get("active_stage", {})
+        st_name = active_st.get("name", "Tillering")
+        fc_metrics = (forecast_data or {}).get("metrics", {})
 
-        # 2. Crop-Specific Analysis
-        reply_paragraphs = []
-        if any(w in q_lower for w in ["chickpea", "gram", "chana", "lentil", "pulse"]):
+        # Stage or crop query
+        if any(w in q_lower for w in ["stage", "phase", "growth", "which stage", "what stage", "where is crop", "gone"]):
+            reply_paragraphs = [
+                f"### 🌱 Active Crop Lifecycle Stage: **{st_name}** ({crop_name})\n\n"
+                f"- **Current Farm Crop:** **{crop_name}** (Sown: {sow_date}, **Day {days_elapsed}** in field)\n"
+                f"- **Active Growth Stage:** **{st_name}**\n"
+                f"- **Expected Harvest:** **{(crop_data or {}).get('expected_harvest', 'In ~90 days')}** (~{(crop_data or {}).get('days_remaining', 90)} days remaining)\n"
+                f"- **NASA 30-Day Climate Outlook:** Total expected rain of **{fc_metrics.get('total_expected_rain_mm', 6.0)} mm**, average temp **{fc_metrics.get('avg_temperature_c', 19.5)}°C**.\n\n"
+                f"**Field Management for {st_name} Stage:**\n"
+                f"1. **Moisture Control:** Keep soil moisture in the optimal {((crop_data or {}).get('thresholds') or {}).get('soil_moisture_min', 18)}%–{((crop_data or {}).get('thresholds') or {}).get('soil_moisture_max', 32)}% bracket (current sensor reading: **{soil.soil_moisture}%**).\n"
+                f"2. **Fertilizer Protocol:** Because your soil Nitrogen is currently {soil.nitrogen} mg/kg (mild deficit), apply a light bio-inoculant top-dressing or well-rotted vermicompost."
+            ]
+            recommendations.append(f"Inspect field canopy density and root nodules at {st_name} stage.")
+            recommendations.append("Check soil moisture before scheduling next irrigation.")
+        elif any(w in q_lower for w in ["chickpea", "gram", "chana", "lentil", "pulse"]):
             reply_paragraphs.append(
                 f"### 🌱 Agronomic Evaluation for Chickpea / Pulses\n"
                 f"**Suitability Score:** **88/100 (Highly Recommended)**\n\n"
@@ -230,8 +293,35 @@ SCIENTIFIC OBJECTIVES & RESPONSE STANDARDS:
         api_key = user_key or os.getenv("NVIDIA_API_KEY") or self.default_api_key or settings.NVIDIA_API_KEY
         model_name = os.getenv("NVIDIA_MODEL") or self.model or settings.NVIDIA_MODEL
 
+        # Load active crop profile, rotation history, and multi-window forecast
+        from .crop_profile_service import crop_profile_service
+        from .multi_window_forecaster import multi_window_forecaster
+
+        crop_data = crop_profile_service.get_full_profile()
+        crop_history = crop_profile_service.get_history()
+
+        # Check if user message informs the AI of a crop growth stage transition
+        stage_match = re.search(
+            r'(?:crop (?:is in|entered|reached|has reached|is now at|is at)|now at|set stage to|current stage is|gone to|now in)\s+([a-zA-Z\s]+?)(?: stage|\.|\Z)',
+            user_message,
+            re.IGNORECASE
+        )
+        if stage_match:
+            candidate = stage_match.group(1).strip().title()
+            if candidate.lower() not in ["which", "what", "how", "where", "why", "the", "any"]:
+                crop_profile_service.set_growth_stage(candidate)
+                crop_data = crop_profile_service.get_full_profile()
+                print(f"[AI Chat Stage Transition] Detected user stage update to: {candidate}")
+
+        # Compute 30-day forecast projections
+        forecast_data = multi_window_forecaster.forecast(
+            window="1_month",
+            current_nasa=nasa.model_dump(),
+            crop_name=crop_data.get("name", "Wheat")
+        )
+
         if not api_key:
-            return self._fallback_agronomic_engine(user_message, soil, nasa)
+            return self._fallback_agronomic_engine(user_message, soil, nasa, crop_data, crop_history, forecast_data)
 
         try:
             client = OpenAI(
@@ -245,7 +335,7 @@ SCIENTIFIC OBJECTIVES & RESPONSE STANDARDS:
             if search_hits:
                 grounding_text = "\nLIVE OPEN WEB KNOWLEDGE GROUNDING:\n" + "\n".join([f"- {h['title']}: {h['snippet']}" for h in search_hits])
 
-            system_prompt = self._build_system_prompt(soil, nasa) + grounding_text
+            system_prompt = self._build_system_prompt(soil, nasa, crop_data, crop_history, forecast_data) + grounding_text
 
             completion = client.chat.completions.create(
                 model=model_name,
@@ -267,7 +357,7 @@ SCIENTIFIC OBJECTIVES & RESPONSE STANDARDS:
                 raw_reply += web_section
 
             # Extract structured fallback suggestions to enrich UI chips
-            fallback = self._fallback_agronomic_engine(user_message, soil, nasa)
+            fallback = self._fallback_agronomic_engine(user_message, soil, nasa, crop_data, crop_history, forecast_data)
 
             return ChatResponse(
                 reply=raw_reply,
@@ -278,7 +368,7 @@ SCIENTIFIC OBJECTIVES & RESPONSE STANDARDS:
             )
         except Exception as e:
             print(f"[Nemotron AI Warning] Live API call failed: {e}. Falling back to embedded agronomy engine.")
-            fallback = self._fallback_agronomic_engine(user_message, soil, nasa)
+            fallback = self._fallback_agronomic_engine(user_message, soil, nasa, crop_data, crop_history, forecast_data)
             fallback.source_model = f"FIELD SHIFT Agronomy Engine (NVIDIA Fallback: {str(e)[:45]}...)"
             return fallback
 

@@ -77,6 +77,22 @@ export async function setFarmerCrop(crop, sowDate = null, lat = 28.6139, lon = 7
   return res.json();
 }
 
+export async function updateCropStage(stage) {
+  const res = await fetch(`${API_BASE}/crop/stage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ stage })
+  });
+  if (!res.ok) throw new Error("Failed to update crop stage");
+  return res.json();
+}
+
+export async function fetchCropHistory() {
+  const res = await fetch(`${API_BASE}/crop/history`);
+  if (!res.ok) throw new Error("Failed to fetch crop history");
+  return res.json();
+}
+
 export async function fetchCropAlerts(lat = 28.6139, lon = 77.2090) {
   const res = await fetch(`${API_BASE}/crop/alerts?lat=${lat}&lon=${lon}`);
   if (!res.ok) throw new Error("Failed to fetch crop threshold alerts");

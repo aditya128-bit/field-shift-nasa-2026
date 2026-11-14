@@ -1,11 +1,11 @@
 import os
 import asyncio
 import json
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, HTTPException, Header
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, HTTPException, Header, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 
 from .config import settings
 from .models.schemas import (
@@ -29,6 +29,9 @@ class CropSetRequest(BaseModel):
     sow_date: Optional[str] = None
     lat: Optional[float] = None
     lon: Optional[float] = None
+
+class StageUpdateRequest(BaseModel):
+    stage: str
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -187,6 +190,20 @@ def set_farmer_crop(req: CropSetRequest):
     lat = req.lat if req.lat is not None else settings.DEFAULT_LAT
     lon = req.lon if req.lon is not None else settings.DEFAULT_LON
     return crop_profile_service.set_crop(req.crop, req.sow_date, lat=lat, lon=lon)
+
+@app.post("/api/crop/stage")
+def update_crop_growth_stage(req: StageUpdateRequest):
+    """Manually update or confirm the crop's current growth stage."""
+    return crop_profile_service.set_growth_stage(req.stage)
+
+@app.get("/api/crop/history")
+def get_crop_rotation_history():
+    """Retrieve full crop rotation history including previous crops and residual soil legacies."""
+    return {
+        "current_crop": crop_profile_service.get_full_profile().get("name", "Wheat"),
+        "active_stage": crop_profile_service.get_active_stage(),
+        "rotation_history": crop_profile_service.get_history()
+    }
 
 @app.get("/api/crop/profile")
 def get_farmer_crop_profile():

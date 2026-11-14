@@ -7,7 +7,8 @@ import {
 } from 'lucide-react';
 import { 
   fetchCropProfile, setFarmerCrop, fetchCropAlerts, 
-  fetchActiveHazards, fetchOrganicFertilizer, fetchGroundwaterSeaLevel 
+  fetchActiveHazards, fetchOrganicFertilizer, fetchGroundwaterSeaLevel,
+  updateCropStage, fetchCropHistory
 } from '../services/api';
 
 const POPULAR_CROPS = [
@@ -35,6 +36,7 @@ export default function FarmerSimpleView({
   const [groundwaterData, setGroundwaterData] = useState(null);
   const [customCropInput, setCustomCropInput] = useState('');
   const [isUpdatingCrop, setIsUpdatingCrop] = useState(false);
+  const [isUpdatingStage, setIsUpdatingStage] = useState(false);
 
   const moisture = soilReading?.soil_moisture ?? 22.5;
   const temp     = nasaObs?.temp_2m ?? 24.2;
@@ -88,6 +90,20 @@ export default function FarmerSimpleView({
     if (customCropInput.trim()) {
       handleSelectCrop(customCropInput.trim());
       setCustomCropInput('');
+    }
+  };
+
+  const handleStageSelect = async (newStage) => {
+    try {
+      setIsUpdatingStage(true);
+      const updated = await updateCropStage(newStage);
+      setCropProfile(updated);
+      const alertsRes = await fetchCropAlerts(location.lat, location.lon);
+      setCropAlerts(alertsRes?.alerts || []);
+    } catch (e) {
+      console.warn("[Stage Update Error]", e);
+    } finally {
+      setIsUpdatingStage(false);
     }
   };
 
@@ -281,17 +297,31 @@ export default function FarmerSimpleView({
             </div>
           </div>
 
-          {/* Active Growth Stage */}
+          {/* Active Growth Stage (Interactive) */}
           <div className="p-3 rounded-lg" style={{ background: '#0f1117', border: '1px solid #2a2d3e' }}>
             <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
-              <span>Active Stage</span>
-              <span className="text-emerald-400 font-semibold">Stage 1 of {cropProfile?.stages?.length || 5}</span>
+              <span>Active Growth Stage</span>
+              <span className="text-emerald-400 font-semibold">
+                Day {cropProfile?.days_elapsed || 28} in field
+              </span>
             </div>
-            <div className="text-base font-bold text-emerald-300 truncate">
-              {cropProfile?.stages?.[0]?.name || 'Sowing / Vegetative'}
+            <div className="mt-1">
+              <select
+                value={cropProfile?.active_stage?.name || cropProfile?.stages?.[0]?.name || ''}
+                onChange={e => handleStageSelect(e.target.value)}
+                disabled={isUpdatingStage}
+                className="w-full text-xs font-bold px-2 py-1 rounded bg-[#161a26] border border-[#2a2d3e] text-emerald-300 cursor-pointer focus:border-emerald-500"
+              >
+                {(cropProfile?.stages || []).map((s, idx) => (
+                  <option key={s.name} value={s.name}>
+                    Stage {idx + 1}: {s.name} ({s.days}d)
+                  </option>
+                ))}
+              </select>
             </div>
-            <div className="text-[11px] text-slate-400 mt-1">
-              Expected Harvest: <b className="text-white">{cropProfile?.expected_harvest || '150 days'}</b>
+            <div className="text-[11px] text-slate-400 mt-1.5 flex items-center justify-between">
+              <span>Harvest: <b className="text-white">{cropProfile?.expected_harvest || 'Feb 2027'}</b></span>
+              <span className="text-emerald-400 font-mono">~{cropProfile?.days_remaining || 91}d left</span>
             </div>
           </div>
 
@@ -312,6 +342,41 @@ export default function FarmerSimpleView({
             >
               Ask AI Agronomist →
             </button>
+          </div>
+        )}
+
+        {/* Crop Rotation History & Residual Soil Impacts */}
+        {cropProfile?.rotation_history?.length > 0 && (
+          <div className="mt-4 p-4 rounded-lg text-xs" style={{ background: '#111520', border: '1px solid #1f2638' }}>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-sm">🔄</span>
+                <span className="font-bold text-white text-xs">Farm Multi-Season Crop Rotation History & Soil Legacy:</span>
+              </div>
+              <span className="text-[11px] text-slate-400">
+                Active Cycle: <b className="text-emerald-400">{cropProfile.name} (Rabi 2026-27 Active)</b>
+              </span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+              {cropProfile.rotation_history.map((hist, i) => (
+                <div key={i} className="p-2.5 rounded bg-[#0a0d14] border border-[#1e2333] flex items-start gap-2.5">
+                  <div className="w-6 h-6 rounded-full bg-blue-900/60 border border-blue-700/80 text-blue-300 font-bold flex items-center justify-center flex-shrink-0 text-[10px]">
+                    {i + 1}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="font-semibold text-slate-200 text-xs truncate">{hist.crop}</span>
+                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 font-mono whitespace-nowrap">
+                        {hist.season}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-amber-300/90 mt-1 leading-snug">
+                      <b>Soil Legacy:</b> {hist.soil_legacy}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>
