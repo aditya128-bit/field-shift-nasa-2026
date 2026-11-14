@@ -5,11 +5,11 @@ import {
 } from 'lucide-react';
 import { sendChatMessage } from '../services/api';
 
-export default function ChatbotAdvisor({ soilReading, nasaObs, apiKey }) {
+export default function ChatbotAdvisor({ soilReading, nasaObs, apiKey, initialQuery }) {
   const [messages, setMessages] = useState([
     {
       sender: 'bot',
-      text: "Namaste! I am your FIELD SHIFT AI Agronomist, powered by NASA Earth Observations and your local 8-in-1 IoT soil telemetry.\n\nAsk me anything about crop suitability, 30-day rain and heat predictions, intercropping arrangements, or natural ways to enrich your soil!",
+      text: "Namaste! I am your FIELD SHIFT AI Agronomist, powered by NVIDIA NIM (Llama-3.2-90B), NASA Earth Observations, and your local 8-in-1 IoT soil telemetry.\n\nAsk me anything about crop suitability, 30-day rain and heat predictions, intercropping arrangements, or natural ways to enrich your soil!",
       recommendations: [
         "Incorporate short-duration summer legume (Moong) to restore soil Nitrogen.",
         "Maintain crop residue mulch to lower surface soil temperatures during spring heat spikes."
@@ -24,6 +24,12 @@ export default function ChatbotAdvisor({ soilReading, nasaObs, apiKey }) {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef(null);
+
+  useEffect(() => {
+    if (initialQuery && initialQuery.trim()) {
+      handleSend(initialQuery.trim());
+    }
+  }, [initialQuery]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });

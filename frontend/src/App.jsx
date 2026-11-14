@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Navbar from './components/Navbar';
+import FarmerSimpleView from './components/FarmerSimpleView';
 import SoilTelemetryCard from './components/SoilTelemetryCard';
 import RotationComparator from './components/RotationComparator';
 import NasaGeoMap from './components/NasaGeoMap';
@@ -14,7 +15,8 @@ import {
 import { RefreshCw, AlertCircle, Satellite, Cpu, Droplet, Sprout, Navigation } from 'lucide-react';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('gis');
+  const [activeTab, setActiveTab] = useState('farmer');
+  const [initialAiQuery, setInitialAiQuery] = useState('');
   const [location, setLocation] = useState({
     name: "Auto-Detecting Computer Location...",
     lat: 28.6139,
@@ -159,7 +161,7 @@ export default function App() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#030712] text-slate-100 flex flex-col font-sans selection:bg-[#FCEE21] selection:text-black">
+    <div className="min-h-screen bg-[#131314] text-slate-100 flex flex-col font-sans selection:bg-[#1a73e8] selection:text-white">
       
       {/* Navigation & Global Header */}
       <Navbar
@@ -198,18 +200,31 @@ export default function App() {
         {/* Loading state */}
         {loading && !soilReading ? (
           <div className="min-h-[60vh] flex flex-col items-center justify-center space-y-4">
-            <div className="w-12 h-12 rounded-2xl bg-blue-950 border border-blue-800 flex items-center justify-center animate-pulse">
-              <Satellite className="w-6 h-6 text-[#FCEE21] animate-spin" />
+            <div className="w-12 h-12 rounded-2xl bg-[#202124] border border-[#3c4043] flex items-center justify-center animate-pulse">
+              <Satellite className="w-6 h-6 text-[#8ab4f8] animate-spin" />
             </div>
             <div className="text-center">
-              <h3 className="text-base font-bold text-white">Acquiring NASA Observations for Your Location</h3>
+              <h3 className="text-base font-bold text-white">Connecting to Google Cloud & NASA Feeds</h3>
               <p className="text-xs text-slate-400 mt-1">
-                Coordinates: <span className="font-mono text-cyan-300">{location.lat}° N, {location.lon}° E</span>
+                Coordinates: <span className="font-mono text-[#8ab4f8]">{location.lat}° N, {location.lon}° E</span>
               </p>
             </div>
           </div>
         ) : (
           <>
+            {activeTab === 'farmer' && (
+              <FarmerSimpleView
+                soilReading={soilReading}
+                nasaObs={nasaObs}
+                location={location}
+                onSelectTab={setActiveTab}
+                onAskAi={(question) => {
+                  setInitialAiQuery(question);
+                  setActiveTab('chat');
+                }}
+              />
+            )}
+
             {activeTab === 'gis' && (
               <NasaGeoMap
                 location={location}
@@ -259,6 +274,7 @@ export default function App() {
                 soilReading={soilReading}
                 nasaObs={nasaObs}
                 apiKey={apiKey}
+                initialQuery={initialAiQuery}
               />
             )}
           </>
@@ -266,18 +282,18 @@ export default function App() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-[#132242] bg-[#030919] py-6 text-center text-xs text-slate-400">
-        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+      <footer className="border-t border-[#3c4043] bg-[#18191c] py-5 text-center text-xs text-slate-400">
+        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3 font-sans">
           <div className="flex items-center space-x-2">
-            <span className="font-bold text-white">FIELD SHIFT</span>
+            <span className="font-bold text-white">Google Cloud & NASA Earth Engine</span>
             <span>•</span>
-            <span className="text-[#FCEE21]">NASA Space Apps Challenge 2026</span>
+            <span className="text-[#8ab4f8]">FIELD SHIFT Farm Decision OS</span>
           </div>
           <div>
-            Open NASA Earth Observations (SMAP, GPM IMERG, Landsat/MODIS, NASA POWER) & Edge IoT.
+            Open NASA Satellite Fleet (SMAP, GPM IMERG, MODIS, Landsat) & In-Situ 8-in-1 IoT Telemetry.
           </div>
-          <div className="text-[11px] text-slate-500 font-mono">
-            Active GPS: {location.lat.toFixed(4)}° N, {location.lon.toFixed(4)}° E
+          <div className="text-[11px] text-slate-400 font-mono">
+            Target: {location.lat.toFixed(4)}° N, {location.lon.toFixed(4)}° E
           </div>
         </div>
       </footer>

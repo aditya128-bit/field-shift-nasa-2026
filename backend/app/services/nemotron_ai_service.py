@@ -180,7 +180,8 @@ SCIENTIFIC OBJECTIVES & RESPONSE STANDARDS:
         )
 
     def generate_advice(self, user_message: str, soil: SoilReading, nasa: NasaObservation, user_key: Optional[str] = None) -> ChatResponse:
-        api_key = user_key or self.default_api_key
+        api_key = user_key or os.getenv("NVIDIA_API_KEY") or self.default_api_key or settings.NVIDIA_API_KEY
+        model_name = os.getenv("NVIDIA_MODEL") or self.model or settings.NVIDIA_MODEL
 
         if not api_key:
             return self._fallback_agronomic_engine(user_message, soil, nasa)
@@ -200,7 +201,7 @@ SCIENTIFIC OBJECTIVES & RESPONSE STANDARDS:
             system_prompt = self._build_system_prompt(soil, nasa) + grounding_text
 
             completion = client.chat.completions.create(
-                model=self.model,
+                model=model_name,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_message}
@@ -216,7 +217,7 @@ SCIENTIFIC OBJECTIVES & RESPONSE STANDARDS:
 
             return ChatResponse(
                 reply=raw_reply,
-                source_model=f"NVIDIA NIM ({self.model})",
+                source_model=f"NVIDIA NIM ({model_name})",
                 recommendations=fallback.recommendations,
                 soil_enrichment_tips=fallback.soil_enrichment_tips,
                 suggested_rotations=fallback.suggested_rotations
