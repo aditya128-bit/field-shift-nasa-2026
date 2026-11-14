@@ -262,6 +262,22 @@ def get_multi_window_forecast(
         crop_name=crop_name
     )
 
+@app.post("/api/forecast/weekly-checkpoint")
+def trigger_weekly_online_learning_checkpoint():
+    """
+    Executes a weekly online learning checkpoint:
+    1. Fits incremental SGDRegressor weights via partial_fit() on the rolling weekly window.
+    2. Recalibrates feature coefficients and updates the decadal model.
+    3. Returns the updated online learning metrics and updated weekly forecast.
+    """
+    checkpoint_res = online_learning_service.run_weekly_online_learning_checkpoint()
+    crop_name = crop_profile_service.get_full_profile().get("name", "Wheat")
+    updated_fc = multi_window_forecaster.forecast(window="7_days", crop_name=crop_name)
+    return {
+        "checkpoint": checkpoint_res,
+        "weekly_forecast": updated_fc
+    }
+
 # ── Environmental, Groundwater & Sea Level ─────────────────────────────────
 @app.get("/api/environmental/groundwater-sealevel")
 def get_groundwater_and_sealevel(

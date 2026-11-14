@@ -5,10 +5,13 @@ Supports windows: 1-Month (30d), 2-Month (60d), 5-Month (150d / Season), 1-Year 
 Provides crop-lifecycle alignment, heat/drought stress detection, and water balance.
 """
 import os
+import math
 import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Any, Optional
+
+from .online_learning_service import online_learning_service
 
 DATA_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), "../data/nasa_power_2005_2024.csv"))
 
@@ -97,6 +100,9 @@ class MultiWindowForecaster:
         # Decay bias over time (short-term persistence fades into long-term climatology)
         decay_half_life = 14.0  # days
 
+        # Ingest multi-day projections from online incremental learning engine
+        online_moist_preds = online_learning_service.predict_multi_day(total_days)
+
         points = []
         accumulated_rain = 0.0
         heat_stress_days = 0
@@ -113,7 +119,12 @@ class MultiWindowForecaster:
             adj_temp_mean = round(clim.get('t_mean', 24.0) + (temp_bias * decay_factor), 2)
             adj_temp_max = round(clim.get('t_max', 30.0) + (temp_bias * decay_factor), 2)
             adj_temp_min = round(clim.get('t_min', 18.0) + (temp_bias * decay_factor), 2)
-            adj_gwetroot = round(float(np.clip(clim.get('gwetroot_mean', 0.28) + (moist_bias * decay_factor), 0.08, 0.90)), 3)
+
+            # Online learning blended moisture projection
+            online_m = online_moist_preds[day] if day < len(online_moist_preds) else 0.28
+            online_weight = float(np.clip(0.70 * np.exp(-day / 21.0), 0.25, 0.70))
+            clim_m = clim.get('gwetroot_mean', 0.28) + (moist_bias * decay_factor)
+            adj_gwetroot = round(float(np.clip(online_weight * online_m + (1.0 - online_weight) * clim_m, 0.08, 0.90)), 3)
 
             # Daily rain expectation and probability
             rain_val = clim.get('precip_mean', 0.5)
@@ -182,6 +193,48 @@ class MultiWindowForecaster:
         # Water balance surplus/deficit
         water_balance_net = round(accumulated_rain - total_et0, 1)
 
+        # Build 7-day weekly actionable breakdown
+        weekly_schedule = []
+        step_days = 7
+        num_weeks = int(np.ceil(total_days / float(step_days)))
+        for w in range(num_weeks):
+            w_start = w * step_days
+            w_end = min(total_days, (w + 1) * step_days)
+            w_points = points[w_start:w_end]
+            if not w_points:
+                continue
+            w_rain = round(float(sum(p["precipitation_mm"] for p in w_points)), 1)
+            w_et0 = round(float(sum(p["et0_mm"] for p in w_points)), 1)
+            w_tmax = round(float(max(p["t_max"] for p in w_points)), 1)
+            w_moist = round(float(np.mean([p["soil_moisture"] for p in w_points])) * 100.0, 1)
+            w_deficit = round(w_rain - w_et0, 1)
+            w_heat = sum(1 for p in w_points if p["heat_stress"])
+
+            if w_deficit < -15 and w_moist < 22:
+                rec = "🚨 Urgent irrigation needed: Severe water deficit & root-zone dry."
+            elif w_deficit < -10:
+                rec = "💧 Schedule 1 light irrigation (15-20 mm) mid-week."
+            elif w_heat > 0:
+                rec = "🔥 Evening light sprinkling to counter midday heat spikes."
+            elif w_rain > 20:
+                rec = "🌧️ High rain expected: Maintain field drainage & pause watering."
+            else:
+                rec = "🌿 Adequate soil moisture: Hold irrigation cycle."
+
+            weekly_schedule.append({
+                "week_num": w + 1,
+                "label": f"Week {w + 1} ({w_points[0]['date']} to {w_points[-1]['date']})",
+                "start_date": w_points[0]["date"],
+                "end_date": w_points[-1]["date"],
+                "total_rain_mm": w_rain,
+                "total_et0_mm": w_et0,
+                "net_water_balance_mm": w_deficit,
+                "avg_soil_moisture_pct": w_moist,
+                "peak_temp_c": w_tmax,
+                "heat_stress_days": w_heat,
+                "recommended_action": rec
+            })
+
         # Risk level determination
         overall_risk = "LOW"
         if heat_stress_days > 10 or frost_risk_days > 3 or moisture_deficit_days > (total_days * 0.4):
@@ -215,6 +268,16 @@ class MultiWindowForecaster:
                 "frost_risk_days": frost_risk_days,
                 "moisture_deficit_days": moisture_deficit_days,
                 "overall_risk_level": overall_risk
+            },
+            "weekly_schedule": weekly_schedule,
+            "online_learning": {
+                "status": "Active (Streaming & Adapting)",
+                "algorithm": "SGDRegressor with Decadal Transfer Learning",
+                "baseline_dataset": "NASA POWER Decadal 2005-2024 (7,305 daily records)",
+                "decadal_r2": online_learning_service.decadal_r2_score,
+                "stream_ticks": online_learning_service.stream_ticks,
+                "rolling_rmse": round(float(np.sqrt(online_learning_service.ema_mse)), 5),
+                "update_cadence": "Weekly Automated Checkpoint + In-situ Stream"
             },
             "insights": insights,
             "chart_data": summary_points,

@@ -112,6 +112,14 @@ export async function fetchMultiWindowForecast(window = "1_month", crop = "Wheat
   return res.json();
 }
 
+export async function triggerWeeklyCheckpoint() {
+  const res = await fetch(`${API_BASE}/forecast/weekly-checkpoint`, {
+    method: "POST"
+  });
+  if (!res.ok) throw new Error("Failed to trigger weekly online learning checkpoint");
+  return res.json();
+}
+
 export async function fetchGroundwaterSeaLevel(lat = 28.6139, lon = 77.2090, elevation_m = 212.0) {
   const res = await fetch(`${API_BASE}/environmental/groundwater-sealevel?lat=${lat}&lon=${lon}&elevation_m=${elevation_m}`);
   if (!res.ok) throw new Error("Failed to fetch groundwater and sea level data");
