@@ -52,6 +52,18 @@ def root():
 def health_check():
     return {"status": "healthy", "service": "field-shift-backend"}
 
+@app.get("/api/location/ip")
+def get_ip_location():
+    """Fallback IP geolocation endpoint to detect computer coordinates if browser GPS is blocked."""
+    import requests
+    try:
+        r = requests.get("http://ip-api.com/json", timeout=5)
+        if r.status_code == 200:
+            return r.json()
+    except Exception as e:
+        print(f"[IP Geolocation Warning] {e}")
+    return {"status": "fallback", "lat": settings.DEFAULT_LAT, "lon": settings.DEFAULT_LON, "city": "Delhi"}
+
 @app.get("/api/nasa/current", response_model=NasaObservation)
 def get_nasa_observations(
     lat: float = Query(settings.DEFAULT_LAT, description="Latitude"),

@@ -11,15 +11,17 @@ import {
   fetchRotationStrategies, fetchForecast, fetchNasaGibs,
   createTelemetryWebSocket 
 } from './services/api';
-import { RefreshCw, AlertCircle, Satellite, Cpu, Droplet, Sprout } from 'lucide-react';
+import { RefreshCw, AlertCircle, Satellite, Cpu, Droplet, Sprout, Navigation } from 'lucide-react';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('gis');
   const [location, setLocation] = useState({
-    name: "Delhi Basin (IARI Pusa / Najafgarh)",
+    name: "Auto-Detecting Computer Location...",
     lat: 28.6139,
-    lon: 77.2090
+    lon: 77.2090,
+    isDeviceLocation: false
   });
+  const [detectingLocation, setDetectingLocation] = useState(false);
 
   const [soilReading, setSoilReading] = useState(null);
   const [soilHistory, setSoilHistory] = useState([]);
@@ -32,8 +34,72 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Initial Data Fetch
-  const loadInitialData = async () => {
+  // Auto-detect computer / device Latitude and Longitude
+  const detectDeviceLocation = () => {
+    setDetectingLocation(true);
+
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const lat = parseFloat(position.coords.latitude.toFixed(4));
+          const lon = parseFloat(position.coords.longitude.toFixed(4));
+          console.log(`[Geolocation] Successfully acquired computer coordinates: ${lat}, ${lon}`);
+          setLocation({
+            name: `My Computer GPS (${lat}° N, ${lon}° E)`,
+            lat: lat,
+            lon: lon,
+            isDeviceLocation: true
+          });
+          setDetectingLocation(false);
+        },
+        async (err) => {
+          console.warn("[Geolocation] Browser GPS permission denied or timed out. Falling back to IP-based location:", err.message);
+          try {
+            const res = await fetch('/api/location/ip');
+            const data = await res.json();
+            if (data.lat && data.lon) {
+              const lat = parseFloat(data.lat.toFixed(4));
+              const lon = parseFloat(data.lon.toFixed(4));
+              setLocation({
+                name: `${data.city || 'Local Area'} (${lat}° N, ${lon}° E)`,
+                lat: lat,
+                lon: lon,
+                isDeviceLocation: true
+              });
+            }
+          } catch (e) {
+            console.error("IP Geolocation fallback failed:", e);
+          } finally {
+            setDetectingLocation(false);
+          }
+        },
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+      );
+    } else {
+      // Fallback if browser doesn't support geolocation
+      fetch('/api/location/ip')
+        .then(r => r.json())
+        .then(data => {
+          if (data.lat && data.lon) {
+            setLocation({
+              name: `${data.city || 'Local Area'} (${data.lat.toFixed(4)}° N, ${data.lon.toFixed(4)}° E)`,
+              lat: data.lat,
+              lon: data.lon,
+              isDeviceLocation: true
+            });
+          }
+        })
+        .finally(() => setDetectingLocation(false));
+    }
+  };
+
+  // Run location detection on initial mount
+  useEffect(() => {
+    detectDeviceLocation();
+  }, []);
+
+  // Fetch NASA & Agronomy data whenever coordinates change
+  const loadDataForLocation = async () => {
     try {
       setLoading(true);
       setError(null);
@@ -54,16 +120,16 @@ export default function App() {
       setForecast(fc);
       setGibsLayers(gibs);
     } catch (err) {
-      console.error("Failed to load initial data:", err);
-      setError(err.message || "Failed to connect to backend service");
+      console.error("Failed to load data for coordinates:", err);
+      setError(err.message || "Failed to connect to NASA observation feeds");
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadInitialData();
-  }, [location]);
+    loadDataForLocation();
+  }, [location.lat, location.lon]);
 
   // Real-time WebSocket connection for live telemetry stream
   useEffect(() => {
@@ -88,7 +154,7 @@ export default function App() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#030712] text-slate-100 flex flex-col font-sans selection:bg-cyan-500 selection:text-black">
+    <div className="min-h-screen bg-[#030712] text-slate-100 flex flex-col font-sans selection:bg-[#FCEE21] selection:text-black">
       
       {/* Navigation & Global Header */}
       <Navbar
@@ -96,6 +162,8 @@ export default function App() {
         setActiveTab={setActiveTab}
         location={location}
         setLocation={setLocation}
+        detectDeviceLocation={detectDeviceLocation}
+        detectingLocation={detectingLocation}
         soilReading={soilReading}
         nasaObs={nasaObs}
         apiKey={apiKey}
@@ -111,10 +179,10 @@ export default function App() {
           <div className="bg-rose-950/60 border border-rose-800 rounded-xl p-4 flex items-center justify-between text-xs text-rose-300">
             <div className="flex items-center space-x-2">
               <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0" />
-              <span>{error}. Check that the FastAPI backend is running on port 8000.</span>
+              <span>{error}. Check backend server on port 8000.</span>
             </div>
             <button
-              onClick={loadInitialData}
+              onClick={loadDataForLocation}
               className="px-3 py-1 bg-rose-900 hover:bg-rose-800 text-white rounded-lg text-xs font-semibold"
             >
               Retry
@@ -125,21 +193,24 @@ export default function App() {
         {/* Loading state */}
         {loading && !soilReading ? (
           <div className="min-h-[60vh] flex flex-col items-center justify-center space-y-4">
-            <div className="w-12 h-12 rounded-2xl bg-cyan-950 border border-cyan-800 flex items-center justify-center animate-pulse">
-              <Satellite className="w-6 h-6 text-cyan-400 animate-spin" />
+            <div className="w-12 h-12 rounded-2xl bg-blue-950 border border-blue-800 flex items-center justify-center animate-pulse">
+              <Satellite className="w-6 h-6 text-[#FCEE21] animate-spin" />
             </div>
             <div className="text-center">
-              <h3 className="text-base font-bold text-white">Initializing FIELD SHIFT Mission Feed</h3>
-              <p className="text-xs text-slate-400 mt-1">Connecting NASA Earth Observations & 8-in-1 IoT Telemetry...</p>
+              <h3 className="text-base font-bold text-white">Acquiring NASA Observations for Your Location</h3>
+              <p className="text-xs text-slate-400 mt-1">
+                Coordinates: <span className="font-mono text-cyan-300">{location.lat}° N, {location.lon}° E</span>
+              </p>
             </div>
           </div>
         ) : (
           <>
-            {activeTab === 'telemetry' && (
-              <SoilTelemetryCard
-                soilReading={soilReading}
-                soilHistory={soilHistory}
+            {activeTab === 'gis' && (
+              <NasaGeoMap
+                location={location}
                 nasaObs={nasaObs}
+                soilReading={soilReading}
+                gibsLayers={gibsLayers}
               />
             )}
 
@@ -151,12 +222,11 @@ export default function App() {
               />
             )}
 
-            {activeTab === 'gis' && (
-              <NasaGeoMap
-                location={location}
-                nasaObs={nasaObs}
+            {activeTab === 'telemetry' && (
+              <SoilTelemetryCard
                 soilReading={soilReading}
-                gibsLayers={gibsLayers}
+                soilHistory={soilHistory}
+                nasaObs={nasaObs}
               />
             )}
 
@@ -179,18 +249,18 @@ export default function App() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-slate-900 bg-slate-950/80 py-6 text-center text-xs text-slate-500">
+      <footer className="border-t border-[#132242] bg-[#030919] py-6 text-center text-xs text-slate-400">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="flex items-center space-x-2">
-            <span className="font-bold text-slate-400">FIELD SHIFT</span>
+            <span className="font-bold text-white">FIELD SHIFT</span>
             <span>•</span>
-            <span>NASA Space Apps Challenge 2026</span>
+            <span className="text-[#FCEE21]">NASA Space Apps Challenge 2026</span>
           </div>
           <div>
-            Built with NASA Earth Observations (SMAP, GPM IMERG, Landsat/MODIS, NASA POWER) & NVIDIA NIM.
+            Open NASA Earth Observations (SMAP, GPM IMERG, Landsat/MODIS, NASA POWER) & Edge IoT.
           </div>
-          <div className="text-[11px] text-slate-600">
-            Designed for Farmer Decision Support & Multi-generational Agricultural Resilience
+          <div className="text-[11px] text-slate-500 font-mono">
+            Active GPS: {location.lat.toFixed(4)}° N, {location.lon.toFixed(4)}° E
           </div>
         </div>
       </footer>
@@ -199,7 +269,7 @@ export default function App() {
       <HardwareModal
         isOpen={isHardwareModalOpen}
         onClose={() => setIsHardwareModalOpen(false)}
-        onSendTestReading={loadInitialData}
+        onSendTestReading={loadDataForLocation}
       />
 
     </div>
