@@ -291,6 +291,31 @@ def chat_with_nemotron_agronomist(
     api_key = request.api_key or x_nvidia_api_key or settings.NVIDIA_API_KEY
     return nemotron_ai_service.generate_advice(request.message, soil, nasa, user_key=api_key)
 
+@app.get("/api/search")
+def search_agricultural_web(q: str = Query(..., description="Query for agricultural research, market prices, or ICAR data")):
+    """
+    Live agricultural web search grounding using simulated browser headers (zero API keys).
+    Retrieves latest research publications, crop pest advisories, and price trends.
+    """
+    from .services.nemotron_ai_service import search_live_web
+    hits = search_live_web(q, max_results=6)
+    return {
+        "query": q,
+        "results_count": len(hits),
+        "results": hits,
+        "source": "Live Web / Agricultural Research Grounding"
+    }
+
+@app.get("/api/isro/profile")
+def get_isro_profile(lat: float = Query(28.7195), lon: float = Query(77.1025)):
+    """
+    ISRO & NRSC Bhuvan Earth Observation & Agro-Thematic Profile.
+    Returns NRSC LULC classification, Agro-Climatic Sub-Region, EOS-04 SAR soil moisture,
+    and INSAT-3DR solar insolation for the farm location.
+    """
+    from .services.isro_service import get_isro_agro_profile
+    return get_isro_agro_profile(lat, lon)
+
 @app.websocket("/ws/telemetry")
 async def websocket_telemetry_stream(websocket: WebSocket):
     """Streams live 8-in-1 soil telemetry and NASA updates to connected web dashboard clients."""

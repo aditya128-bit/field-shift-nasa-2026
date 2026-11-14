@@ -122,6 +122,12 @@ export async function sendChatMessage(message, apiKey = null) {
   return res.json();
 }
 
+export async function fetchIsroProfile(lat = 28.7195, lon = 77.1025) {
+  const res = await fetch(`${API_BASE}/isro/profile?lat=${lat}&lon=${lon}`);
+  if (!res.ok) throw new Error("Failed to fetch ISRO profile");
+  return res.json();
+}
+
 export function createTelemetryWebSocket(onMessage, onError) {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   const wsUrl = `${protocol}//${window.location.host}/ws/telemetry`;
