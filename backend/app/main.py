@@ -18,6 +18,15 @@ from .services.rotation_engine import rotation_engine
 from .services.predictive_models import predictive_service
 from .services.nemotron_ai_service import nemotron_ai_service
 from .services.online_learning_service import online_learning_service
+from .services.crop_profile_service import crop_profile_service
+from .services.hazard_alert_service import hazard_alert_service
+from .services.multi_window_forecaster import multi_window_forecaster
+from .services.environmental_service import environmental_service
+from pydantic import BaseModel
+
+class CropSetRequest(BaseModel):
+    crop: str
+    sow_date: Optional[str] = None
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -168,6 +177,100 @@ def get_30_day_forecast(
 def get_online_learning_status():
     """Returns diagnostics and weights from the online adaptive learning engine (SGDRegressor partial_fit)."""
     return online_learning_service.get_status()
+
+# ── Crop Profiling & Threshold Alerts ──────────────────────────────────────
+@app.post("/api/crop/set")
+def set_farmer_crop(req: CropSetRequest):
+    """Set the farmer's current crop to establish variable ranges, alert thresholds, and lifecycle dates."""
+    return crop_profile_service.set_crop(req.crop, req.sow_date)
+
+@app.get("/api/crop/profile")
+def get_farmer_crop_profile():
+    """Retrieve active crop parameters, threshold ranges, and lifecycle calendar."""
+    prof = crop_profile_service.get_full_profile()
+    if prof.get("status") == "no_crop_set":
+        # Default to wheat as initial baseline
+        return crop_profile_service.set_crop("Wheat")
+    return prof
+
+@app.get("/api/crop/alerts")
+def get_crop_threshold_alerts(
+    lat: float = Query(settings.DEFAULT_LAT),
+    lon: float = Query(settings.DEFAULT_LON)
+):
+    """Evaluate current NASA satellite and ground IoT telemetry against crop tolerance thresholds."""
+    soil = soil_iot_service.get_latest()
+    nasa = nasa_service.fetch_observations(lat, lon)
+    return {
+        "crop": crop_profile_service.get_full_profile().get("name", "Wheat"),
+        "alerts": crop_profile_service.evaluate_alerts(
+            soil_moisture=soil.soil_moisture,
+            temp=nasa.temp_2m,
+            tmax=nasa.temp_max,
+            rain_24h=nasa.precipitation_mm,
+            ph=soil.ph
+        )
+    }
+
+# ── Multi-Hazard Real-Time Monitoring ─────────────────────────────────────
+@app.get("/api/hazards/active")
+def get_active_hazards(
+    lat: float = Query(settings.DEFAULT_LAT),
+    lon: float = Query(settings.DEFAULT_LON)
+):
+    """Returns live weather alerts, tropical cyclone tracking, and NASA FIRMS fire hotspots with geo-markers."""
+    return hazard_alert_service.get_active_hazards(lat, lon)
+
+# ── Multi-Window Time-Series Forecasting ──────────────────────────────────
+@app.get("/api/forecast/window")
+def get_multi_window_forecast(
+    window: str = Query("1_month", description="Options: 7_days, 1_month, 2_months, 5_months, 1_year"),
+    crop: Optional[str] = Query(None, description="Crop name to align lifecycle with"),
+    lat: float = Query(settings.DEFAULT_LAT),
+    lon: float = Query(settings.DEFAULT_LON)
+):
+    """
+    Multi-window time-series forecast trained on 20-year NASA POWER daily observations.
+    Projects temperature, precipitation, soil moisture, and water deficit for 1, 2, 5 months or 1 year.
+    """
+    nasa = nasa_service.fetch_observations(lat, lon)
+    crop_name = crop or crop_profile_service.get_full_profile().get("name", "Wheat")
+    return multi_window_forecaster.forecast(
+        window=window,
+        current_nasa=nasa.model_dump(),
+        crop_name=crop_name
+    )
+
+# ── Environmental, Groundwater & Sea Level ─────────────────────────────────
+@app.get("/api/environmental/groundwater-sealevel")
+def get_groundwater_and_sealevel(
+    lat: float = Query(settings.DEFAULT_LAT),
+    lon: float = Query(settings.DEFAULT_LON),
+    elevation_m: float = Query(212.0)
+):
+    """Provides NASA GRACE-FO regional aquifer trends and coastal sea level / salinization vulnerability."""
+    return environmental_service.get_groundwater_and_sealevel_data(lat, lon, elevation_m)
+
+# ── Organic Fertilizer & Soil Nutrition Advisory ──────────────────────────
+@app.get("/api/advisory/organic-fertilizer")
+def get_organic_fertilizer_advisory(
+    crop: Optional[str] = Query(None),
+    lat: float = Query(settings.DEFAULT_LAT),
+    lon: float = Query(settings.DEFAULT_LON)
+):
+    """Tailored organic nutrition plan (green manure, biofertilizer pack, Jeevamrut) factoring upcoming weather."""
+    soil = soil_iot_service.get_latest()
+    nasa = nasa_service.fetch_observations(lat, lon)
+    crop_name = crop or crop_profile_service.get_full_profile().get("name", "Wheat")
+    return environmental_service.generate_organic_fertilizer_plan(
+        crop_name=crop_name,
+        soil_ph=soil.ph,
+        soil_moisture=soil.soil_moisture,
+        nitrogen_mg_kg=soil.nitrogen,
+        phosphorus_mg_kg=soil.phosphorus,
+        potassium_mg_kg=soil.potassium,
+        upcoming_rain_mm=nasa.precipitation_mm
+    )
 
 @app.post("/api/chat", response_model=ChatResponse)
 def chat_with_nemotron_agronomist(

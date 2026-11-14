@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Home, Map, RotateCw, Cpu, BarChart2, MessageSquare,
-  Crosshair, Loader2, ChevronDown, Settings, Bell, Sprout
+  Crosshair, Loader2, ChevronDown, Settings, Bell, Sprout, AlertTriangle
 } from 'lucide-react';
+import { fetchActiveHazards } from '../services/api';
 
 const NAV_TABS = [
   { id: 'farmer',    icon: Home,          label: 'My Farm'       },
@@ -27,6 +28,13 @@ export default function Navbar({
   nasaObs, soilReading, openHardwareModal, apiKey, setApiKey
 }) {
   const [showFieldPicker, setShowFieldPicker] = useState(false);
+  const [hazardAlerts, setHazardAlerts] = useState(0);
+
+  useEffect(() => {
+    fetchActiveHazards(location.lat, location.lon)
+      .then(d => setHazardAlerts(d?.total_alerts || 0))
+      .catch(() => {});
+  }, [location.lat, location.lon]);
 
   const handlePreset = (preset) => {
     setLocation({ name: preset.name, lat: preset.lat, lon: preset.lon, isDeviceLocation: false });
@@ -107,6 +115,19 @@ export default function Navbar({
 
         {/* Right: Status chips */}
         <div className="flex items-center gap-2">
+          {/* Active Hazards Alert Badge */}
+          {hazardAlerts > 0 && (
+            <button
+              onClick={() => setActiveTab('gis')}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold transition hover:opacity-80"
+              style={{ background: 'rgba(239,68,68,0.2)', border: '1px solid #ef4444', color: '#fca5a5' }}
+              title="Active Storm or Weather Hazard"
+            >
+              <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
+              <span>{hazardAlerts} Warnings</span>
+            </button>
+          )}
+
           {/* NASA Online Badge */}
           <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold"
                style={{ background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.25)', color: '#22c55e' }}>

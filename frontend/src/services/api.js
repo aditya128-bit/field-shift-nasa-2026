@@ -61,6 +61,54 @@ export async function fetchOnlineLearningStatus() {
   return res.json();
 }
 
+export async function fetchCropProfile() {
+  const res = await fetch(`${API_BASE}/crop/profile`);
+  if (!res.ok) throw new Error("Failed to fetch crop profile");
+  return res.json();
+}
+
+export async function setFarmerCrop(crop, sowDate = null) {
+  const res = await fetch(`${API_BASE}/crop/set`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ crop, sow_date: sowDate })
+  });
+  if (!res.ok) throw new Error("Failed to set crop");
+  return res.json();
+}
+
+export async function fetchCropAlerts(lat = 28.6139, lon = 77.2090) {
+  const res = await fetch(`${API_BASE}/crop/alerts?lat=${lat}&lon=${lon}`);
+  if (!res.ok) throw new Error("Failed to fetch crop threshold alerts");
+  return res.json();
+}
+
+export async function fetchActiveHazards(lat = 28.6139, lon = 77.2090) {
+  const res = await fetch(`${API_BASE}/hazards/active?lat=${lat}&lon=${lon}`);
+  if (!res.ok) throw new Error("Failed to fetch active hazards");
+  return res.json();
+}
+
+export async function fetchMultiWindowForecast(window = "1_month", crop = "Wheat", lat = 28.6139, lon = 77.2090) {
+  const params = new URLSearchParams({ window, crop, lat, lon });
+  const res = await fetch(`${API_BASE}/forecast/window?${params.toString()}`);
+  if (!res.ok) throw new Error("Failed to fetch multi-window forecast");
+  return res.json();
+}
+
+export async function fetchGroundwaterSeaLevel(lat = 28.6139, lon = 77.2090, elevation_m = 212.0) {
+  const res = await fetch(`${API_BASE}/environmental/groundwater-sealevel?lat=${lat}&lon=${lon}&elevation_m=${elevation_m}`);
+  if (!res.ok) throw new Error("Failed to fetch groundwater and sea level data");
+  return res.json();
+}
+
+export async function fetchOrganicFertilizer(crop = "Wheat", lat = 28.6139, lon = 77.2090) {
+  const params = new URLSearchParams({ crop, lat, lon });
+  const res = await fetch(`${API_BASE}/advisory/organic-fertilizer?${params.toString()}`);
+  if (!res.ok) throw new Error("Failed to fetch organic fertilizer advisory");
+  return res.json();
+}
+
 export async function sendChatMessage(message, apiKey = null) {
   const res = await fetch(`${API_BASE}/chat`, {
     method: "POST",
