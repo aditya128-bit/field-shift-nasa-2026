@@ -50,7 +50,7 @@ export default function FarmerSimpleView({
       let prof;
       if (cropName) {
         setIsUpdatingCrop(true);
-        prof = await setFarmerCrop(cropName);
+        prof = await setFarmerCrop(cropName, null, location.lat, location.lon);
         setIsUpdatingCrop(false);
       } else {
         prof = await fetchCropProfile();
@@ -169,6 +169,24 @@ export default function FarmerSimpleView({
             <p className="text-xs mt-1" style={{ color: '#9ea3b8' }}>
               All NASA environmental thresholds, water balances, and hazard alarms below are tailored specifically to this plant.
             </p>
+
+            {/* AI Generation Badge & Agrometeorological Rationale */}
+            <div className="flex flex-wrap items-center gap-2 mt-2">
+              <span className="text-[11px] px-2.5 py-0.5 rounded-full font-semibold flex items-center gap-1.5"
+                    style={{ background: 'rgba(79, 142, 247, 0.15)', border: '1px solid rgba(79, 142, 247, 0.3)', color: '#8ab4f8' }}>
+                <Sparkles className="w-3 h-3 text-cyan-400" />
+                <span>AI Agrometeorology: {cropProfile?.source || "NVIDIA NIM (google/gemma-4-31b-it)"}</span>
+              </span>
+              {isUpdatingCrop ? (
+                <span className="text-xs text-amber-300 animate-pulse font-medium">
+                  ⚡ Querying NVIDIA NIM AI for {customCropInput || "selected crop"}...
+                </span>
+              ) : cropProfile?.llm_reasoning ? (
+                <span className="text-xs text-slate-300 italic">
+                  "{cropProfile.llm_reasoning}"
+                </span>
+              ) : null}
+            </div>
           </div>
 
           {/* Custom crop text input */}

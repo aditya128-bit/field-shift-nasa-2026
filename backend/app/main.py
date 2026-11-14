@@ -27,6 +27,8 @@ from pydantic import BaseModel
 class CropSetRequest(BaseModel):
     crop: str
     sow_date: Optional[str] = None
+    lat: Optional[float] = None
+    lon: Optional[float] = None
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -181,8 +183,10 @@ def get_online_learning_status():
 # ── Crop Profiling & Threshold Alerts ──────────────────────────────────────
 @app.post("/api/crop/set")
 def set_farmer_crop(req: CropSetRequest):
-    """Set the farmer's current crop to establish variable ranges, alert thresholds, and lifecycle dates."""
-    return crop_profile_service.set_crop(req.crop, req.sow_date)
+    """Set the farmer's current crop by querying NVIDIA NIM LLM to establish variable ranges, alert thresholds, and lifecycle dates."""
+    lat = req.lat if req.lat is not None else settings.DEFAULT_LAT
+    lon = req.lon if req.lon is not None else settings.DEFAULT_LON
+    return crop_profile_service.set_crop(req.crop, req.sow_date, lat=lat, lon=lon)
 
 @app.get("/api/crop/profile")
 def get_farmer_crop_profile():

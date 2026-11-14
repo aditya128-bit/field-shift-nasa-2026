@@ -1,12 +1,17 @@
 """
 Crop Profile Service — LLM-generated per-crop parameter ranges,
-alert thresholds, lifecycle stages, fertilizer suggestions.
+alert thresholds, lifecycle stages, and fertilizer suggestions.
+Queries NVIDIA NIM LLM to dynamically generate scientifically grounded ranges for any crop.
 """
+import os
+import re
 import json
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
+from openai import OpenAI
+from ..config import settings
 
-# ─── Static crop knowledge base (augmented by LLM if available) ──────────────
+# ─── Static crop knowledge base as scientific baseline / fallback ─────────────
 CROP_DATABASE: Dict[str, Dict[str, Any]] = {
     "wheat": {
         "name": "Wheat (Triticum aestivum)",
@@ -50,6 +55,7 @@ CROP_DATABASE: Dict[str, Dict[str, Any]] = {
             "waterlogging": "Wheat cannot tolerate waterlogging >48h",
         },
         "market_notes": "MSP-supported. High local demand. Stable price.",
+        "llm_reasoning": "Standard Indo-Gangetic wheat profile calibrated for early-winter sowing and March terminal heat avoidance."
     },
     "rice": {
         "name": "Rice (Oryza sativa)",
@@ -93,6 +99,7 @@ CROP_DATABASE: Dict[str, Dict[str, Any]] = {
             "drought_risk": "Panicle stage most critical — maintain 5cm standing water",
         },
         "market_notes": "MSP-supported. Very high water consumption. Consider diversification.",
+        "llm_reasoning": "High water footprint crop requiring anaerobic soil moisture and standing water during panicle initiation."
     },
     "mustard": {
         "name": "Mustard (Brassica juncea)",
@@ -135,229 +142,24 @@ CROP_DATABASE: Dict[str, Dict[str, Any]] = {
             "frost": "Young seedlings vulnerable to frost below 0°C",
         },
         "market_notes": "Good oil content. Edible oil demand rising. Niche premium market.",
-    },
-    "mung_bean": {
-        "name": "Mung Bean / Green Gram (Vigna radiata)",
-        "emoji": "🫘",
-        "season": "Zaid / Kharif (Mar–Jun)",
-        "duration_days": 70,
-        "stages": [
-            {"name": "Sowing",        "days": 5,  "month_offset": 0},
-            {"name": "Vegetative",    "days": 25, "month_offset": 0},
-            {"name": "Flowering",     "days": 15, "month_offset": 1},
-            {"name": "Pod Setting",   "days": 15, "month_offset": 2},
-            {"name": "Harvest",       "days": 10, "month_offset": 2},
-        ],
-        "thresholds": {
-            "soil_moisture_min": 14,
-            "soil_moisture_max": 26,
-            "soil_moisture_critical_low": 10,
-            "temp_min_c": 20,
-            "temp_max_c": 38,
-            "heat_stress_c": 42,
-            "frost_risk_c": 5,
-            "rainfall_min_season_mm": 150,
-            "rainfall_max_24h_mm": 50,
-            "ph_min": 6.2,
-            "ph_max": 7.2,
-            "ndvi_healthy_min": 0.35,
-        },
-        "water_need_mm_season": 350,
-        "nitrogen_kg_ha": 20,  # nitrogen-fixing
-        "organic_fertilizers": [
-            "Rhizobium japonicum seed inoculation (fixes 50–60 kg N/ha FREE)",
-            "PSB (Phosphate Solubilising Bacteria) seed treatment",
-            "FYM 5 t/ha — low dose as it fixes own nitrogen",
-            "Zinc sulphate 25 kg/ha for micronutrient support",
-        ],
-        "hazard_warnings": {
-            "yellow_mosaic": "Whitefly-transmitted virus — scout weekly",
-            "pod_borer": "Spray Bt at pod formation",
-            "waterlogging": "Cannot tolerate waterlogging. Raised beds help.",
-        },
-        "market_notes": "Short duration. Great nitrogen-fixer for rotation. Good dal market.",
-    },
-    "cotton": {
-        "name": "Cotton (Gossypium hirsutum)",
-        "emoji": "🌸",
-        "season": "Kharif (Apr–Nov)",
-        "duration_days": 180,
-        "stages": [
-            {"name": "Sowing",        "days": 7,   "month_offset": 0},
-            {"name": "Seedling",      "days": 25,  "month_offset": 0},
-            {"name": "Squaring",      "days": 30,  "month_offset": 1},
-            {"name": "Flowering",     "days": 30,  "month_offset": 2},
-            {"name": "Boll Setting",  "days": 40,  "month_offset": 3},
-            {"name": "Boll Opening",  "days": 30,  "month_offset": 4},
-            {"name": "Harvest",       "days": 20,  "month_offset": 5},
-        ],
-        "thresholds": {
-            "soil_moisture_min": 20,
-            "soil_moisture_max": 35,
-            "soil_moisture_critical_low": 15,
-            "temp_min_c": 20,
-            "temp_max_c": 40,
-            "heat_stress_c": 42,
-            "frost_risk_c": 10,
-            "rainfall_min_season_mm": 500,
-            "rainfall_max_24h_mm": 80,
-            "ph_min": 5.8,
-            "ph_max": 8.0,
-            "ndvi_healthy_min": 0.45,
-        },
-        "water_need_mm_season": 700,
-        "nitrogen_kg_ha": 150,
-        "organic_fertilizers": [
-            "FYM 12.5 t/ha before sowing for black soil",
-            "Trichoderma viride seed treatment vs. wilt",
-            "Neem cake 150 kg/ha for nematode control",
-            "Vermicompost 2.5 t/ha at sowing",
-        ],
-        "hazard_warnings": {
-            "bollworm": "Pink bollworm critical Aug–Oct; use pheromone traps",
-            "whitefly": "Spray systemic insecticide if >5 adults/leaf",
-            "leaf_curl_virus": "Whitefly-transmitted; use resistant varieties",
-        },
-        "market_notes": "High input cost but good MSP. BT varieties dominant.",
-    },
-    "sugarcane": {
-        "name": "Sugarcane (Saccharum officinarum)",
-        "emoji": "🎋",
-        "season": "Annual/Ratoon",
-        "duration_days": 365,
-        "stages": [
-            {"name": "Germination",   "days": 30,  "month_offset": 0},
-            {"name": "Tillering",     "days": 60,  "month_offset": 1},
-            {"name": "Grand Growth",  "days": 150, "month_offset": 3},
-            {"name": "Maturation",    "days": 90,  "month_offset": 8},
-            {"name": "Harvest",       "days": 30,  "month_offset": 11},
-        ],
-        "thresholds": {
-            "soil_moisture_min": 25,
-            "soil_moisture_max": 45,
-            "soil_moisture_critical_low": 18,
-            "temp_min_c": 20,
-            "temp_max_c": 38,
-            "heat_stress_c": 42,
-            "frost_risk_c": 5,
-            "rainfall_min_season_mm": 1200,
-            "rainfall_max_24h_mm": 100,
-            "ph_min": 6.0,
-            "ph_max": 7.5,
-            "ndvi_healthy_min": 0.65,
-        },
-        "water_need_mm_season": 2000,
-        "nitrogen_kg_ha": 250,
-        "organic_fertilizers": [
-            "Press mud / filter cake 10 t/ha — excellent organic fertilizer",
-            "Trash mulching to retain moisture between rows",
-            "Azospirillum + PSB biofertilizer mix",
-            "Green manure: Sunhemp incorporated before planting",
-        ],
-        "hazard_warnings": {
-            "top_shoot_borer": "Major pest Jun–Sep",
-            "red_rot": "Fungal disease; use resistant varieties",
-            "waterlogging": "Cannot tolerate >3 days waterlogging",
-        },
-        "market_notes": "Guaranteed price from sugar mills. Long duration = high water use.",
-    },
-    "sorghum": {
-        "name": "Sorghum / Jowar (Sorghum bicolor)",
-        "emoji": "🌽",
-        "season": "Kharif (Jun–Sep) or Rabi (Oct–Jan)",
-        "duration_days": 110,
-        "stages": [
-            {"name": "Germination",  "days": 7,  "month_offset": 0},
-            {"name": "Vegetative",   "days": 40, "month_offset": 0},
-            {"name": "Boot/Head",    "days": 25, "month_offset": 1},
-            {"name": "Grain Fill",   "days": 25, "month_offset": 2},
-            {"name": "Harvest",      "days": 10, "month_offset": 3},
-        ],
-        "thresholds": {
-            "soil_moisture_min": 12,
-            "soil_moisture_max": 30,
-            "soil_moisture_critical_low": 8,
-            "temp_min_c": 15,
-            "temp_max_c": 40,
-            "heat_stress_c": 42,
-            "frost_risk_c": 5,
-            "rainfall_min_season_mm": 300,
-            "rainfall_max_24h_mm": 70,
-            "ph_min": 5.5,
-            "ph_max": 8.5,
-            "ndvi_healthy_min": 0.40,
-        },
-        "water_need_mm_season": 400,
-        "nitrogen_kg_ha": 80,
-        "organic_fertilizers": [
-            "FYM 5–8 t/ha incorporated at sowing",
-            "Azospirillum biofertilizer seed treatment",
-            "Neem cake 2 t/ha for soil health",
-        ],
-        "hazard_warnings": {
-            "shoot_fly": "Major pest in seedling stage",
-            "grain_mold": "In humid conditions at maturity",
-            "drought_escape": "One of most drought-tolerant cereals",
-        },
-        "market_notes": "Excellent for dryland farming. Good fodder value. Lower MSP than wheat.",
-    },
-    "tomato": {
-        "name": "Tomato (Solanum lycopersicum)",
-        "emoji": "🍅",
-        "season": "Winter (Oct–Feb) or Summer",
-        "duration_days": 120,
-        "stages": [
-            {"name": "Nursery",       "days": 30, "month_offset": 0},
-            {"name": "Transplanting", "days": 7,  "month_offset": 1},
-            {"name": "Vegetative",    "days": 25, "month_offset": 1},
-            {"name": "Flowering",     "days": 20, "month_offset": 2},
-            {"name": "Fruiting",      "days": 30, "month_offset": 3},
-            {"name": "Harvest",       "days": 20, "month_offset": 3},
-        ],
-        "thresholds": {
-            "soil_moisture_min": 22,
-            "soil_moisture_max": 38,
-            "soil_moisture_critical_low": 15,
-            "temp_min_c": 10,
-            "temp_max_c": 32,
-            "heat_stress_c": 35,
-            "frost_risk_c": 2,
-            "rainfall_max_24h_mm": 30,
-            "ph_min": 6.0,
-            "ph_max": 7.0,
-            "ndvi_healthy_min": 0.45,
-        },
-        "water_need_mm_season": 500,
-        "nitrogen_kg_ha": 100,
-        "organic_fertilizers": [
-            "Vermicompost 5 t/ha before transplanting",
-            "Panchagavya foliar spray (3%) every 15 days",
-            "Neem oil spray (3ml/L) for pest management",
-            "Trichoderma @ 2.5 kg/ha for root health",
-        ],
-        "hazard_warnings": {
-            "early_blight": "Alternaria — spray copper fungicide",
-            "fruit_borer": "Critical at fruiting; use Spinosad",
-            "blossom_drop": "If temp >35°C at night",
-        },
-        "market_notes": "Highly perishable. Price volatile. Good for local markets.",
-    },
+        "llm_reasoning": "Short duration, low water consumption crop that escapes terminal March heat blast."
+    }
 }
 
-# Default for unknown crops
 DEFAULT_THRESHOLDS = {
-    "soil_moisture_min": 15,
-    "soil_moisture_max": 35,
+    "soil_moisture_min": 16,
+    "soil_moisture_max": 32,
     "soil_moisture_critical_low": 10,
-    "temp_max_c": 38,
-    "heat_stress_c": 40,
+    "temp_min_c": 10,
+    "temp_max_c": 34,
+    "heat_stress_c": 36,
     "frost_risk_c": 2,
-    "rainfall_max_24h_mm": 60,
+    "rainfall_min_season_mm": 350,
+    "rainfall_max_24h_mm": 50,
     "ph_min": 6.0,
-    "ph_max": 7.5,
+    "ph_max": 7.8,
     "ndvi_healthy_min": 0.40,
 }
-
 
 class CropProfileService:
     def __init__(self):
@@ -365,43 +167,149 @@ class CropProfileService:
         self._crop_profile: Optional[Dict] = None
         self._sow_date: Optional[datetime] = None
 
-    def set_crop(self, crop_name: str, sow_date: Optional[str] = None) -> Dict:
-        """Set the farmer's current crop and return full profile."""
+    def _query_llm_for_crop(self, crop_name: str, lat: float = 28.6139, lon: float = 77.2090, user_key: Optional[str] = None) -> Optional[Dict]:
+        """
+        Query NVIDIA NIM LLM to generate custom scientific thresholds and agrometeorological ranges for any crop.
+        """
+        api_key = user_key or os.getenv("NVIDIA_API_KEY") or settings.NVIDIA_API_KEY
+        if not api_key:
+            return None
+
+        model_name = os.getenv("NVIDIA_MODEL") or settings.NVIDIA_MODEL or "google/gemma-4-31b-it"
+
+        prompt = f"""You are the senior planetary agrometeorologist at NASA Space Apps 2026.
+A farmer at coordinates ({lat:.4f}° N, {lon:.4f}° E) is cultivating: "{crop_name}".
+
+Generate scientifically grounded agrometeorological parameter ranges and growth stages for this crop.
+Respond with PURE JSON ONLY (no markdown fences, no text before or after):
+{{
+  "name": "{crop_name.title()}",
+  "emoji": "appropriate single emoji",
+  "season": "e.g. Rabi / Kharif / Zaid / Annual",
+  "duration_days": 120,
+  "thresholds": {{
+    "soil_moisture_min": 18,
+    "soil_moisture_max": 30,
+    "soil_moisture_critical_low": 12,
+    "temp_min_c": 8.0,
+    "temp_max_c": 32.0,
+    "heat_stress_c": 35.0,
+    "frost_risk_c": 2.0,
+    "rainfall_min_season_mm": 350,
+    "rainfall_max_24h_mm": 50,
+    "ph_min": 6.2,
+    "ph_max": 7.6,
+    "ndvi_healthy_min": 0.45
+  }},
+  "water_need_mm_season": 400,
+  "nitrogen_kg_ha": 90,
+  "stages": [
+    {{"name": "Sowing & Germination", "days": 12, "month_offset": 0}},
+    {{"name": "Vegetative Branching", "days": 35, "month_offset": 0}},
+    {{"name": "Flowering & Fruit/Pod Set", "days": 30, "month_offset": 1}},
+    {{"name": "Grain/Fruit Filling", "days": 30, "month_offset": 2}},
+    {{"name": "Maturity & Harvest", "days": 13, "month_offset": 3}}
+  ],
+  "organic_fertilizers": [
+    "Specific biofertilizer seed inoculant",
+    "Targeted compost / vermicompost dosage",
+    "Green manure companion option"
+  ],
+  "hazard_warnings": {{
+    "heat_risk": "Vulnerability to high temperature at flowering",
+    "moisture_risk": "Waterlogging or drought sensitivity",
+    "pest_alert": "Primary climate-correlated pest/fungus"
+  }},
+  "market_notes": "Commercial viability, MSP status, or local crop demand",
+  "llm_reasoning": "2-sentence agrometeorological rationale for chosen moisture and heat ceilings at these coordinates."
+}}"""
+
+        try:
+            client = OpenAI(
+                base_url=settings.NVIDIA_BASE_URL,
+                api_key=api_key,
+                timeout=12.0
+            )
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.2,
+                max_tokens=650
+            )
+
+            raw = response.choices[0].message.content.strip()
+            # Clean markdown codeblocks if present
+            clean_json = re.sub(r'^```json\s*|^```\s*|```$', '', raw, flags=re.MULTILINE).strip()
+            parsed = json.loads(clean_json)
+
+            # Validate basic structure
+            if "name" in parsed and "thresholds" in parsed and "soil_moisture_min" in parsed["thresholds"]:
+                parsed["source"] = f"NVIDIA NIM ({model_name})"
+                parsed["generated_by_llm"] = True
+                print(f"[LLM Crop Profiler] Successfully generated custom profile for {crop_name} using {model_name}.")
+                return parsed
+        except Exception as e:
+            print(f"[LLM Crop Profiler Warning] NVIDIA NIM query failed: {e}. Falling back to baseline.")
+
+        return None
+
+    def set_crop(
+        self,
+        crop_name: str,
+        sow_date: Optional[str] = None,
+        lat: float = 28.6139,
+        lon: float = 77.2090,
+        user_key: Optional[str] = None
+    ) -> Dict:
+        """
+        Set the farmer's current crop. First queries NVIDIA NIM LLM.
+        Falls back to scientific database if offline.
+        """
         key = crop_name.lower().replace(" ", "_").replace("-", "_")
 
-        # Try direct match
-        profile = CROP_DATABASE.get(key)
-        if not profile:
-            # Fuzzy match
-            for k, v in CROP_DATABASE.items():
-                if k in key or key in k:
-                    profile = v
-                    key = k
-                    break
+        # 1. First attempt: Query NVIDIA NIM LLM for live customized ranges
+        llm_profile = self._query_llm_for_crop(crop_name, lat=lat, lon=lon, user_key=user_key)
+        if llm_profile:
+            profile = llm_profile
+        else:
+            # 2. Scientific Fallback Engine
+            profile = CROP_DATABASE.get(key)
+            if not profile:
+                for k, v in CROP_DATABASE.items():
+                    if k in key or key in k:
+                        profile = v.copy()
+                        key = k
+                        break
 
-        if not profile:
-            # Generic fallback
-            profile = {
-                "name": crop_name.title(),
-                "emoji": "🌱",
-                "season": "Variable",
-                "duration_days": 120,
-                "stages": [
-                    {"name": "Sowing",    "days": 10, "month_offset": 0},
-                    {"name": "Growth",    "days": 60, "month_offset": 0},
-                    {"name": "Maturity",  "days": 30, "month_offset": 2},
-                    {"name": "Harvest",   "days": 20, "month_offset": 3},
-                ],
-                "thresholds": DEFAULT_THRESHOLDS,
-                "water_need_mm_season": 500,
-                "nitrogen_kg_ha": 80,
-                "organic_fertilizers": [
-                    "FYM 8–10 t/ha before sowing",
-                    "Biofertilizer seed treatment",
-                ],
-                "hazard_warnings": {},
-                "market_notes": "Consult local agricultural extension office for best practices.",
-            }
+            if not profile:
+                profile = {
+                    "name": crop_name.title(),
+                    "emoji": "🌱",
+                    "season": "Multi-Season",
+                    "duration_days": 120,
+                    "stages": [
+                        {"name": "Sowing & Germination", "days": 12, "month_offset": 0},
+                        {"name": "Vegetative Growth",    "days": 45, "month_offset": 0},
+                        {"name": "Flowering & Setting",  "days": 35, "month_offset": 1},
+                        {"name": "Harvest & Curing",     "days": 28, "month_offset": 2},
+                    ],
+                    "thresholds": DEFAULT_THRESHOLDS,
+                    "water_need_mm_season": 450,
+                    "nitrogen_kg_ha": 90,
+                    "organic_fertilizers": [
+                        "FYM 10 t/ha before sowing",
+                        "Biofertilizer seed treatment with PSB and Azotobacter",
+                        "Dhaincha green manure incorporation",
+                    ],
+                    "hazard_warnings": {
+                        "heat_risk": "Avoid water deficit when temperature exceeds 35°C",
+                        "moisture_risk": "Drain excess water within 24 hours of heavy rainfall"
+                    },
+                    "market_notes": "Local mandi distribution. Check extension center for recommended hybrid varieties.",
+                    "llm_reasoning": "Derived from FAO agro-ecological zone default thresholds for sandy-clay alluvial soils."
+                }
+            profile["source"] = "FIELD SHIFT NASA Agronomy Engine (Scientific Baseline)"
+            profile["generated_by_llm"] = False
 
         self._current_crop = crop_name
         self._crop_profile = profile
@@ -447,7 +355,7 @@ class CropProfileService:
         if not self._crop_profile:
             return []
 
-        t = self._crop_profile["thresholds"]
+        t = self._crop_profile.get("thresholds", DEFAULT_THRESHOLDS)
         alerts = []
 
         if soil_moisture < t.get("soil_moisture_critical_low", 10):
@@ -463,27 +371,27 @@ class CropProfileService:
             alerts.append({
                 "level": "🔴 Warning",
                 "type": "low_moisture",
-                "message": f"Soil moisture {soil_moisture:.1f}% below optimal ({t.get('soil_moisture_min', 15)}–{t.get('soil_moisture_max', 35)}%) for {self._crop_profile['name']}. Plan irrigation within 2 days.",
+                "message": f"Soil moisture {soil_moisture:.1f}% below optimal ({t.get('soil_moisture_min', 15)}–{t.get('soil_moisture_max', 35)}%) for {self._crop_profile['name']}. Plan light irrigation.",
                 "parameter": "soil_moisture",
                 "value": soil_moisture,
                 "threshold": t.get("soil_moisture_min", 15),
             })
 
-        if tmax >= t.get("heat_stress_c", 40):
+        if tmax >= t.get("heat_stress_c", 36):
             alerts.append({
                 "level": "🔴 Warning",
                 "type": "heat_stress",
-                "message": f"Heat stress alert! Temperature {tmax}°C exceeds heat stress threshold ({t.get('heat_stress_c', 40)}°C) for {self._crop_profile['name']}. Irrigate early morning to cool soil.",
+                "message": f"Heat stress alert! Temperature {tmax}°C exceeds heat ceiling ({t.get('heat_stress_c', 36)}°C) for {self._crop_profile['name']}. Maintain soil cover.",
                 "parameter": "temperature",
                 "value": tmax,
-                "threshold": t.get("heat_stress_c", 40),
+                "threshold": t.get("heat_stress_c", 36),
             })
 
         if temp <= t.get("frost_risk_c", 2):
             alerts.append({
                 "level": "🔴 Warning",
                 "type": "frost_risk",
-                "message": f"Frost risk! Temperature {temp}°C is at/below frost threshold ({t.get('frost_risk_c', 2)}°C). Cover young plants or use smoke screens overnight.",
+                "message": f"Frost risk! Temperature {temp}°C is at/below frost threshold ({t.get('frost_risk_c', 2)}°C). Cover young seedlings.",
                 "parameter": "temperature",
                 "value": temp,
                 "threshold": t.get("frost_risk_c", 2),
@@ -493,7 +401,7 @@ class CropProfileService:
             alerts.append({
                 "level": "🟡 Watch",
                 "type": "heavy_rainfall",
-                "message": f"Heavy rainfall {rain_24h:.0f}mm in 24h detected. Check field drainage. {self._crop_profile['name']} may face waterlogging risk.",
+                "message": f"Heavy rainfall {rain_24h:.0f}mm in 24h detected. Check field drainage to avoid root rot.",
                 "parameter": "rainfall",
                 "value": rain_24h,
                 "threshold": t.get("rainfall_max_24h_mm", 60),
@@ -505,14 +413,13 @@ class CropProfileService:
             alerts.append({
                 "level": "🟢 Good",
                 "type": "all_clear",
-                "message": f"All conditions are within safe range for {self._crop_profile['name']} during {stage_name} stage. Continue normal management.",
+                "message": f"All agro-climatic parameters are in safe range for {self._crop_profile['name']} during {stage_name} stage.",
                 "parameter": "all",
                 "value": None,
                 "threshold": None,
             })
 
         return alerts
-
 
 # Singleton
 crop_profile_service = CropProfileService()

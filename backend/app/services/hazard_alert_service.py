@@ -82,9 +82,18 @@ class HazardAlertService:
                     if not is_tc:
                         continue
 
-                    # Include if within 3,500 km (macro synoptic scale for Indian Ocean / Asian basin)
+                    # Include if within 3,500 km for regional map tracking
                     if dist_km < 3500:
-                        severity = "emergency" if alert_level.lower() == "red" or dist_km < 800 else "warning"
+                        if dist_km < 250:
+                            severity = "emergency"
+                            impact = f"IMMEDIATE DANGER: {name} is within {round(dist_km)} km of your farm! High wind and flash flood hazard."
+                        elif dist_km < 600:
+                            severity = "warning"
+                            impact = f"REGIONAL WARNING: {name} is {round(dist_km)} km away. Peripheral rain bands may cause sudden squalls."
+                        else:
+                            severity = "distant_basin"
+                            impact = f"Distant marine system: {name} is {round(dist_km)} km away in oceanic basin. No direct destructive impact on your farm."
+
                         cyclones.append({
                             "lat": c_lat,
                             "lon": c_lon,
@@ -93,23 +102,10 @@ class HazardAlertService:
                             "wind_speed_kmh": wind_speed,
                             "distance_km": round(dist_km, 1),
                             "severity": severity,
-                            "impact": f"{name} located {round(dist_km)} km away. Associated squalls/heavy rain may influence regional weather."
+                            "impact": impact
                         })
         except Exception as e:
             print(f"[GDACS Cyclone Warning] {e}")
-        
-        # If no active cyclone within threshold, provide synoptic regional tracking
-        if not cyclones:
-            cyclones.append({
-                "lat": 16.5,
-                "lon": 86.0,
-                "name": "Bay of Bengal Low Pressure Watch",
-                "alert_level": "Watch",
-                "wind_speed_kmh": 45,
-                "distance_km": 1150.0,
-                "severity": "watch",
-                "impact": "Seasonal depression trough active in central Bay of Bengal. Watch for moisture advection inland."
-            })
 
         return cyclones
 
@@ -216,20 +212,21 @@ class HazardAlertService:
                 "icon":    "🔥",
             })
 
-        # Integrate cyclones into alert list
+        # Only add to local farm alerts if within direct reach (< 400 km)
         for cyc in cyclones:
-            if cyc.get("distance_km", 9999) < 1500:
+            if cyc.get("distance_km", 9999) < 400:
+                level = "🆘 Emergency" if cyc["severity"] == "emergency" else "🔴 Warning"
                 weather_alerts.insert(0, {
                     "type":    "cyclone_hazard",
-                    "level":   "🆘 Emergency" if cyc["severity"] == "emergency" else "🟡 Watch",
+                    "level":   level,
                     "date":    datetime.now().strftime("%Y-%m-%d"),
-                    "title":   f"Cyclone Tracker: {cyc['name']}",
+                    "title":   f"Approaching Cyclone: {cyc['name']}",
                     "message": cyc["impact"],
                     "source":  "GDACS / Regional Meteorological Center",
                     "icon":    "🌀",
                 })
 
-        # Geo-features to draw directly on Leaflet map
+        # Geo-features to draw on Leaflet map (including distant basin tracking)
         geo_markers = []
         for f in fire_points:
             geo_markers.append({
@@ -241,14 +238,15 @@ class HazardAlertService:
                 "color": "#f97316"
             })
         for c in cyclones:
+            is_close = c.get("distance_km", 9999) < 400
             geo_markers.append({
                 "lat": c["lat"],
                 "lon": c["lon"],
                 "type": "cyclone",
-                "title": f"Cyclone: {c['name']} ({c['wind_speed_kmh']} km/h)",
+                "title": f"Cyclone: {c['name']} ({c['wind_speed_kmh']} km/h, {c['distance_km']} km away)",
                 "icon": "🌀",
-                "color": "#ec4899",
-                "radius_km": 150.0
+                "color": "#ef4444" if is_close else "#818cf8",
+                "radius_km": 150.0 if is_close else 80.0
             })
 
         # Overall severity

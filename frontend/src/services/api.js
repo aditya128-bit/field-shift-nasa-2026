@@ -67,11 +67,11 @@ export async function fetchCropProfile() {
   return res.json();
 }
 
-export async function setFarmerCrop(crop, sowDate = null) {
+export async function setFarmerCrop(crop, sowDate = null, lat = 28.6139, lon = 77.2090) {
   const res = await fetch(`${API_BASE}/crop/set`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ crop, sow_date: sowDate })
+    body: JSON.stringify({ crop, sow_date: sowDate, lat, lon })
   });
   if (!res.ok) throw new Error("Failed to set crop");
   return res.json();

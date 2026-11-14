@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Calendar, AlertCircle, Droplets, Sun, ShieldCheck, 
   TrendingDown, Info, Flame, CloudRain, Cpu, Activity,
-  Database, RefreshCw, CheckCircle2, Zap, ArrowRight, Layers
+  Database, RefreshCw, CheckCircle2, Zap, ArrowRight, Layers, Sprout
 } from 'lucide-react';
 import { 
   ResponsiveContainer, LineChart, Line, BarChart, Bar, 

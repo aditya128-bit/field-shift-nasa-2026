@@ -17,7 +17,7 @@ class Settings(BaseModel):
     # NVIDIA NIM / Nemotron API configuration
     NVIDIA_API_KEY: str = os.getenv("NVIDIA_API_KEY", "")
     NVIDIA_BASE_URL: str = os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
-    NVIDIA_MODEL: str = os.getenv("NVIDIA_MODEL", "meta/llama-3.2-90b-vision-instruct")
+    NVIDIA_MODEL: str = os.getenv("NVIDIA_MODEL", "google/gemma-4-31b-it")
     
     # Sensor simulation interval in seconds
     SENSOR_SIMULATION_INTERVAL: int = int(os.getenv("SENSOR_SIMULATION_INTERVAL", "5"))
