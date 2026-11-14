@@ -1,334 +1,355 @@
-import React from 'react';
-import { 
-  Sprout, Droplets, Sun, AlertTriangle, CheckCircle2, 
-  TrendingUp, ArrowRight, ShieldCheck, HelpCircle, 
-  Leaf, Calendar, DollarSign, Sparkles, MapPin, Zap
+import React, { useMemo } from 'react';
+import {
+  Droplets, Sun, Sprout, AlertTriangle, CheckCircle2,
+  ArrowRight, Leaf, Calendar, Zap, MapPin, TrendingUp,
+  Thermometer, CloudRain, Wind, Activity
 } from 'lucide-react';
 
-export default function FarmerSimpleView({
-  soilReading,
-  nasaObs,
-  location,
-  onSelectTab,
-  onAskAi
-}) {
-  const moisture = soilReading?.soil_moisture ?? 22.5;
-  const temp = nasaObs?.temp_2m ?? 24.2;
-  const tmax = nasaObs?.temp_max ?? 30.5;
-  const shi = soilReading?.soil_health_index ?? 82;
+// ─── Helper: status from value ────────────────────────────
+function soilMoistureStatus(val) {
+  if (val >= 20 && val <= 35) return { label: '✅ Good',  cls: 'status-good', action: 'No irrigation needed today. Save water & power.' };
+  if (val < 20)               return { label: '⚠️ Low',   cls: 'status-warn', action: 'Consider light irrigation in the next 1–2 days.' };
+  return                             { label: '💧 High',  cls: 'status-info', action: 'Excess moisture. Skip irrigation, check drainage.' };
+}
+
+function tempStatus(tmax) {
+  if (tmax < 28) return { label: '✅ Cool',   cls: 'status-good', action: 'Good temperature for most crops today.' };
+  if (tmax < 35) return { label: '⚠️ Warm',  cls: 'status-warn', action: 'Avoid midday field work. Water crops in early morning.' };
+  return               { label: '🔥 Hot',    cls: 'status-alert', action: 'Heat stress risk! Irrigate early morning or late evening.' };
+}
+
+function soilHealthStatus(shi) {
+  if (shi >= 75) return { label: '✅ Healthy', cls: 'status-good' };
+  if (shi >= 50) return { label: '⚠️ Fair',   cls: 'status-warn' };
+  return               { label: '❌ Poor',    cls: 'status-alert' };
+}
+
+// ─── Metric Card ─────────────────────────────────────────
+function MetricCard({ icon: Icon, iconColor, title, value, unit, status, action, onClick }) {
+  return (
+    <div
+      className="card-hover rounded-xl p-5 flex flex-col gap-3 cursor-pointer"
+      style={{ background: '#1a1d27', border: '1px solid #2a2d3e' }}
+      onClick={onClick}
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="p-1.5 rounded-lg" style={{ background: '#0f1117' }}>
+            <Icon className="w-4 h-4" style={{ color: iconColor }} />
+          </div>
+          <span className="text-sm font-medium" style={{ color: '#9ea3b8' }}>{title}</span>
+        </div>
+        {status && (
+          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${status.cls}`}>
+            {status.label}
+          </span>
+        )}
+      </div>
+
+      <div>
+        <div className="metric-number text-3xl font-bold text-white">
+          {value}<span className="text-lg ml-1" style={{ color: '#6b7194' }}>{unit}</span>
+        </div>
+      </div>
+
+      {action && (
+        <div className="text-xs rounded-lg px-3 py-2" style={{ background: '#0f1117', color: '#9ea3b8' }}>
+          {action}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Rotation Strategy Card ───────────────────────────────
+const ROTATIONS = [
+  {
+    id: 'current',
+    color: '#6b7194',
+    borderColor: '#2a2d3e',
+    emoji: '🌾',
+    name: 'Current Rotation',
+    sub: 'Wheat → Rice (Traditional)',
+    badge: { label: 'Your Current Plan', cls: 'status-info' },
+    pros: ['Familiar & low-risk', 'Good local market support', 'Established supply chain'],
+    cons: ['High water use (Rice needs 1200mm)', 'Soil nutrient depletion over time', 'Prone to blast & blight diseases'],
+    water: '🔴 High (1200+ mm/season)',
+    soil: '🟡 Moderate improvement',
+    income: '🟡 Moderate',
+  },
+  {
+    id: 'strategy_a',
+    color: '#22c55e',
+    borderColor: 'rgba(34,197,94,0.3)',
+    emoji: '🌿',
+    name: 'Strategy A — Recommended',
+    sub: 'Wheat → Mung Bean → Mustard',
+    badge: { label: '⭐ Best for Water Saving', cls: 'status-good' },
+    pros: ['Saves 40–60% irrigation vs. Rice', 'Mung Bean fixes nitrogen (free fertilizer!)', 'Breaks wheat disease cycle naturally'],
+    cons: ['Mung market prices can vary', 'Needs some new equipment for mustard', 'First year may need expert support'],
+    water: '🟢 Low (500–600 mm/season)',
+    soil: '🟢 Strong improvement',
+    income: '🟢 Higher potential',
+  },
+  {
+    id: 'strategy_b',
+    color: '#f59e0b',
+    borderColor: 'rgba(245,158,11,0.3)',
+    emoji: '🌱',
+    name: 'Strategy B — Cover Crop',
+    sub: 'Wheat → Sorghum + Dhaincha Cover',
+    badge: { label: '🌱 Best for Soil Health', cls: 'status-warn' },
+    pros: ['Dhaincha (cover crop) adds organic matter fast', 'Sorghum very drought-tolerant', 'Prevents erosion in bare-field gaps'],
+    cons: ['Lower immediate income from Dhaincha', 'Sorghum market smaller than wheat', 'Needs 2–3 seasons to see soil benefits'],
+    water: '🟡 Moderate (700 mm/season)',
+    soil: '🟢 Excellent long-term',
+    income: '🟡 Moderate',
+  },
+];
+
+function RotationCard({ rot, onAskAi }) {
+  return (
+    <div
+      className="rounded-xl p-5 flex flex-col gap-4"
+      style={{
+        background: '#1a1d27',
+        border: `1px solid ${rot.borderColor}`,
+        borderLeft: `4px solid ${rot.color}`,
+      }}
+    >
+      {/* Header */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="text-3xl">{rot.emoji}</div>
+          <div>
+            <div className="font-bold text-white text-base">{rot.name}</div>
+            <div className="text-sm mt-0.5" style={{ color: '#9ea3b8' }}>{rot.sub}</div>
+          </div>
+        </div>
+        <span className={`text-xs font-bold px-2 py-1 rounded-full whitespace-nowrap ${rot.badge.cls}`}>
+          {rot.badge.label}
+        </span>
+      </div>
+
+      {/* Pros/Cons */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <div className="text-xs font-semibold mb-2" style={{ color: '#22c55e' }}>✅ Benefits</div>
+          <ul className="space-y-1">
+            {rot.pros.map((p, i) => (
+              <li key={i} className="text-xs flex items-start gap-2" style={{ color: '#9ea3b8' }}>
+                <span className="mt-0.5 text-green-400">•</span> {p}
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div>
+          <div className="text-xs font-semibold mb-2" style={{ color: '#f59e0b' }}>⚠️ Considerations</div>
+          <ul className="space-y-1">
+            {rot.cons.map((c, i) => (
+              <li key={i} className="text-xs flex items-start gap-2" style={{ color: '#9ea3b8' }}>
+                <span className="mt-0.5 text-yellow-400">•</span> {c}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+
+      {/* Quick Stats */}
+      <div className="grid grid-cols-3 gap-2 pt-2" style={{ borderTop: '1px solid #2a2d3e' }}>
+        {[
+          { label: 'Water Use', value: rot.water },
+          { label: 'Soil Health', value: rot.soil },
+          { label: 'Income', value: rot.income },
+        ].map(s => (
+          <div key={s.label} className="rounded-lg p-2 text-center" style={{ background: '#0f1117' }}>
+            <div className="text-xs font-medium mb-1" style={{ color: '#6b7194' }}>{s.label}</div>
+            <div className="text-xs font-semibold" style={{ color: '#e8eaf6' }}>{s.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Ask AI button */}
+      <button
+        onClick={() => onAskAi(`Tell me more about the ${rot.name} crop rotation: ${rot.sub}. What are the key risks I should know for my local area?`)}
+        className="w-full text-sm font-semibold py-2.5 rounded-lg flex items-center justify-center gap-2 transition"
+        style={{ background: '#0f1117', border: '1px solid #2a2d3e', color: '#4f8ef7' }}
+      >
+        Ask AI about this rotation <ArrowRight className="w-4 h-4" />
+      </button>
+    </div>
+  );
+}
+
+// ─── MAIN COMPONENT ───────────────────────────────────────
+export default function FarmerSimpleView({ soilReading, nasaObs, location, onSelectTab, onAskAi }) {
+  const moisture = soilReading?.soil_moisture   ?? 22.5;
+  const temp     = nasaObs?.temp_2m             ?? 24.2;
+  const tmax     = nasaObs?.temp_max            ?? 30.5;
+  const rain     = nasaObs?.precipitation_mm    ?? 0;
+  const wind     = nasaObs?.wind_speed          ?? 1.8;
+  const shi      = soilReading?.soil_health_index ?? 82;
+
+  const mStat  = soilMoistureStatus(moisture);
+  const tStat  = tempStatus(tmax);
+  const shStat = soilHealthStatus(shi);
+
+  const today = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+  const quickQuestions = [
+    'Should I irrigate my field today?',
+    'What crop rotation saves the most water?',
+    'How is my soil health this season?',
+    'When should I plant my next crop?',
+    'Is there any weather risk I should prepare for?',
+  ];
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
-      
-      {/* GCP-Style Project Header & Daily Farm Status Banner */}
-      <div className="bg-[#1e293b]/70 border border-[#334155] rounded-2xl p-6 shadow-xl backdrop-blur-sm relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-80 h-80 bg-blue-500/5 rounded-full blur-3xl pointer-events-none" />
-        
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10">
+    <div className="space-y-6 tab-panel">
+
+      {/* ── Page Header ──────────────────────────────── */}
+      <div className="rounded-xl p-6" style={{ background: '#1a1d27', border: '1px solid #2a2d3e' }}>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <div className="flex items-center space-x-2 text-xs font-medium text-slate-400">
-              <span className="bg-[#1a73e8]/20 text-[#8ab4f8] px-2.5 py-0.5 rounded-full border border-[#1a73e8]/30 font-mono">
-                GCP Farm Intelligence • Simple Farmer View
-              </span>
-              <span>•</span>
-              <span className="flex items-center space-x-1">
-                <MapPin className="w-3.5 h-3.5 text-[#34a853]" />
-                <span className="text-slate-300 font-semibold">{location.name}</span>
-              </span>
+            <div className="flex items-center gap-2 mb-2">
+              <MapPin className="w-4 h-4" style={{ color: '#4f8ef7' }} />
+              <span className="text-sm font-medium" style={{ color: '#9ea3b8' }}>{location.name}</span>
+              <span className="text-xs px-2 py-0.5 rounded-full status-good">NASA POWER Live</span>
             </div>
-            
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-white mt-2 tracking-tight">
-              Today's Field Action Plan & Rotation Guide
+            <h1 className="text-2xl sm:text-3xl font-bold text-white leading-tight">
+              Today's Farm Dashboard
             </h1>
-            <p className="text-sm text-slate-300 mt-1 max-w-3xl leading-relaxed">
-              Clear, practical decisions for your farm based on real-time ground soil sensors and free NASA Earth observation satellites.
-            </p>
-          </div>
-
-          <div className="flex items-center space-x-3 self-start md:self-auto">
-            <div className="bg-[#0f172a] border border-[#334155] px-4 py-2.5 rounded-xl text-right">
-              <span className="text-[11px] text-slate-400 uppercase tracking-wider block font-medium">Field Status</span>
-              <span className="text-sm font-bold text-[#34a853] flex items-center justify-end space-x-1.5 mt-0.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-[#34a853] animate-pulse inline-block" />
-                <span>Healthy & Active</span>
-              </span>
-            </div>
-            <button
-              onClick={() => onSelectTab('chat')}
-              className="bg-[#1a73e8] hover:bg-[#1557b0] text-white px-4 py-2.5 rounded-xl text-xs font-bold transition shadow-lg shadow-blue-500/20 flex items-center space-x-1.5"
-            >
-              <Sparkles className="w-4 h-4" />
-              <span>Ask AI Agronomist</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* 4 Primary Farmer Decision Metric Cards (GCP Console Metric Cards) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        
-        {/* Card 1: Water / Irrigation Action */}
-        <div className="bg-[#1e293b]/60 border border-[#334155] hover:border-[#1a73e8]/60 transition-all rounded-xl p-5 shadow-lg flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-slate-400 font-medium flex items-center space-x-1.5">
-                <Droplets className="w-4 h-4 text-[#8ab4f8]" />
-                <span>Water & Irrigation</span>
-              </span>
-              <span className="bg-[#34a853]/20 text-[#34a853] text-[11px] font-bold px-2 py-0.5 rounded-full">
-                Sufficient
-              </span>
-            </div>
-            <div className="mt-3">
-              <div className="text-2xl font-black text-white font-mono">{moisture}%</div>
-              <div className="text-xs text-slate-400 mt-0.5">Root-Zone Soil Moisture</div>
-            </div>
-          </div>
-          <div className="mt-4 pt-3 border-t border-[#334155] text-xs">
-            <span className="font-bold text-[#8ab4f8]">Action: </span>
-            <span className="text-slate-300">Do NOT irrigate today. Save tube-well power. Next check in 5 days.</span>
-          </div>
-        </div>
-
-        {/* Card 2: Temperature & Heat Alert */}
-        <div className="bg-[#1e293b]/60 border border-[#334155] hover:border-[#1a73e8]/60 transition-all rounded-xl p-5 shadow-lg flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-slate-400 font-medium flex items-center space-x-1.5">
-                <Sun className="w-4 h-4 text-[#fbbc04]" />
-                <span>Field Temperature</span>
-              </span>
-              <span className="bg-blue-500/10 text-cyan-300 text-[11px] font-bold px-2 py-0.5 rounded-full">
-                Favorable
-              </span>
-            </div>
-            <div className="mt-3">
-              <div className="text-2xl font-black text-white font-mono">{temp}°C</div>
-              <div className="text-xs text-slate-400 mt-0.5">Peak Forecast: {tmax}°C</div>
-            </div>
-          </div>
-          <div className="mt-4 pt-3 border-t border-[#334155] text-xs">
-            <span className="font-bold text-[#fbbc04]">Alert: </span>
-            <span className="text-slate-300">March terminal heat spike ahead. Prepare foliar spray (2% KNO3).</span>
-          </div>
-        </div>
-
-        {/* Card 3: Soil Health & Natural Nutrition */}
-        <div className="bg-[#1e293b]/60 border border-[#334155] hover:border-[#1a73e8]/60 transition-all rounded-xl p-5 shadow-lg flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-slate-400 font-medium flex items-center space-x-1.5">
-                <Leaf className="w-4 h-4 text-[#34a853]" />
-                <span>Soil Health Index</span>
-              </span>
-              <span className="bg-[#34a853]/20 text-[#34a853] text-[11px] font-bold px-2 py-0.5 rounded-full">
-                Optimal
-              </span>
-            </div>
-            <div className="mt-3">
-              <div className="text-2xl font-black text-white font-mono">{shi}/100</div>
-              <div className="text-xs text-slate-400 mt-0.5">pH {soilReading?.ph ?? 7.8} • N {soilReading?.nitrogen ?? 28} mg/kg</div>
-            </div>
-          </div>
-          <div className="mt-4 pt-3 border-t border-[#334155] text-xs">
-            <span className="font-bold text-[#34a853]">Recommendation: </span>
-            <span className="text-slate-300">Grow Sesbania green manure for 45 days to cut urea requirement.</span>
-          </div>
-        </div>
-
-        {/* Card 4: Profit & Rotation Opportunity */}
-        <div className="bg-[#1e293b]/60 border border-[#334155] hover:border-[#1a73e8]/60 transition-all rounded-xl p-5 shadow-lg flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-slate-400 font-medium flex items-center space-x-1.5">
-                <TrendingUp className="w-4 h-4 text-[#34a853]" />
-                <span>Next Rotation Gain</span>
-              </span>
-              <span className="bg-[#34a853]/20 text-[#34a853] text-[11px] font-bold px-2 py-0.5 rounded-full">
-                +37% Water Saved
-              </span>
-            </div>
-            <div className="mt-3">
-              <div className="text-2xl font-black text-emerald-400 font-mono">+₹28,500/ha</div>
-              <div className="text-xs text-slate-400 mt-0.5">Summer Moong Pulse Gain</div>
-            </div>
-          </div>
-          <div className="mt-4 pt-3 border-t border-[#334155] text-xs">
-            <span className="font-bold text-emerald-400">Next Crop: </span>
-            <span className="text-slate-300">Sow Summer Moong in vacant April–June gap before monsoon.</span>
-          </div>
-        </div>
-
-      </div>
-
-      {/* 3 Simple Crop Rotation Option Cards */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-bold text-white flex items-center space-x-2">
-              <Sprout className="w-5 h-5 text-[#34a853]" />
-              <span>Choose Your Next Crop Rotation Strategy</span>
-            </h2>
-            <p className="text-xs text-slate-400">
-              Comparing your traditional practice against NASA-supported climate-resilient options.
-            </p>
+            <p className="mt-1 text-sm" style={{ color: '#9ea3b8' }}>{today}</p>
           </div>
           <button
-            onClick={() => onSelectTab('rotations')}
-            className="text-xs text-[#8ab4f8] hover:text-white flex items-center space-x-1 font-semibold"
+            onClick={() => onSelectTab('chat')}
+            className="flex items-center gap-2 px-5 py-3 rounded-xl font-semibold text-sm transition"
+            style={{ background: '#4f8ef7', color: '#fff' }}
           >
-            <span>Open Advanced Studio</span>
-            <ArrowRight className="w-3.5 h-3.5" />
+            <Zap className="w-4 h-4" />
+            Ask AI Agronomist
           </button>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          
-          {/* Strategy 1: Traditional Rice-Wheat */}
-          <div className="bg-[#1e293b]/70 border border-rose-900/40 rounded-2xl p-5 shadow-lg flex flex-col justify-between hover:border-rose-700/60 transition">
-            <div>
-              <div className="flex items-center justify-between text-xs mb-2">
-                <span className="bg-rose-950/80 text-rose-300 font-bold px-2.5 py-0.5 rounded-full border border-rose-800 text-[10px] uppercase">
-                  Traditional Practice
-                </span>
-                <span className="text-rose-400 font-mono text-xs font-bold">High Risk</span>
-              </div>
-              <h3 className="text-base font-bold text-white">Conventional Rice–Wheat</h3>
-              <p className="text-xs text-slate-400 mt-1">Puddled Rice ➔ Conventional Wheat ➔ Summer Fallow</p>
-
-              <div className="mt-4 space-y-2 text-xs">
-                <div className="flex justify-between py-1 border-b border-slate-800">
-                  <span className="text-slate-400">Annual Water Demand:</span>
-                  <span className="font-bold text-rose-400 font-mono">11,500 m³/ha</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-slate-800">
-                  <span className="text-slate-400">Bare Soil in 44°C Heat:</span>
-                  <span className="font-bold text-rose-400 font-mono">85 Days</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-slate-800">
-                  <span className="text-slate-400">Soil Nitrogen Balance:</span>
-                  <span className="font-bold text-rose-400 font-mono">-45 kg/ha (Mining N)</span>
-                </div>
-                <div className="flex justify-between py-1">
-                  <span className="text-slate-400">Heatwave Vulnerability:</span>
-                  <span className="font-bold text-rose-400">High (Pollen Sterility)</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-5 p-3 bg-rose-950/20 border border-rose-900/40 rounded-xl text-xs text-rose-200">
-              ⚠️ <b>Why Shift?</b> Tubewell depth declining by 3.2 cm/year (NASA GRACE data). Heavy electricity bills.
-            </div>
-          </div>
-
-          {/* Strategy 2: Pulse-Cereal Diversification (Recommended) */}
-          <div className="bg-[#1e293b]/90 border-2 border-[#34a853] rounded-2xl p-5 shadow-xl flex flex-col justify-between relative overflow-hidden">
-            <div className="absolute top-0 right-0 bg-[#34a853] text-[#071330] text-[10px] font-black uppercase px-3 py-1 rounded-bl-xl tracking-wider">
-              Recommended ⭐⭐⭐
-            </div>
-            
-            <div>
-              <div className="flex items-center justify-between text-xs mb-2">
-                <span className="bg-emerald-950/80 text-emerald-300 font-bold px-2.5 py-0.5 rounded-full border border-emerald-800 text-[10px] uppercase">
-                  Climate Resilient
-                </span>
-                <span className="text-emerald-400 font-mono text-xs font-bold">+37% Water Saved</span>
-              </div>
-              <h3 className="text-base font-bold text-white">Pulse–Cereal Diversification</h3>
-              <p className="text-xs text-slate-300 mt-1">Summer Moong ➔ Zero-Till Wheat + Mustard Border</p>
-
-              <div className="mt-4 space-y-2 text-xs">
-                <div className="flex justify-between py-1 border-b border-slate-800">
-                  <span className="text-slate-400">Annual Water Demand:</span>
-                  <span className="font-bold text-emerald-400 font-mono">7,200 m³/ha (-37%)</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-slate-800">
-                  <span className="text-slate-400">Bare Soil in 44°C Heat:</span>
-                  <span className="font-bold text-emerald-400 font-mono">28 Days (-67%)</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-slate-800">
-                  <span className="text-slate-400">Soil Nitrogen Addition:</span>
-                  <span className="font-bold text-emerald-400 font-mono">+35 kg/ha Free N</span>
-                </div>
-                <div className="flex justify-between py-1">
-                  <span className="text-slate-400">Expected Extra Income:</span>
-                  <span className="font-bold text-emerald-300 font-mono">+₹28,500 / hectare</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-5 p-3 bg-emerald-950/40 border border-emerald-800/60 rounded-xl text-xs text-emerald-200">
-              ✅ <b>Best Fit:</b> Moong covers bare soil in May, cuts weed germination, and gives extra pulse cash harvest.
-            </div>
-          </div>
-
-          {/* Strategy 3: Agroecological Millet-Legume */}
-          <div className="bg-[#1e293b]/70 border border-cyan-800/60 rounded-2xl p-5 shadow-lg flex flex-col justify-between hover:border-cyan-600 transition">
-            <div>
-              <div className="flex items-center justify-between text-xs mb-2">
-                <span className="bg-cyan-950/80 text-cyan-300 font-bold px-2.5 py-0.5 rounded-full border border-cyan-800 text-[10px] uppercase">
-                  Regenerative Organic
-                </span>
-                <span className="text-cyan-400 font-mono text-xs font-bold">+62% Water Saved</span>
-              </div>
-              <h3 className="text-base font-bold text-white">Agroecological Millet–Legume</h3>
-              <p className="text-xs text-slate-400 mt-1">Pearl Millet (Bajra) ➔ Desi Chickpea ➔ Sesbania</p>
-
-              <div className="mt-4 space-y-2 text-xs">
-                <div className="flex justify-between py-1 border-b border-slate-800">
-                  <span className="text-slate-400">Annual Water Demand:</span>
-                  <span className="font-bold text-cyan-400 font-mono">4,400 m³/ha (-62%)</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-slate-800">
-                  <span className="text-slate-400">Bare Soil in 44°C Heat:</span>
-                  <span className="font-bold text-cyan-400 font-mono">12 Days (-86%)</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-slate-800">
-                  <span className="text-slate-400">Soil Nitrogen Addition:</span>
-                  <span className="font-bold text-cyan-400 font-mono">+65 kg/ha Free N</span>
-                </div>
-                <div className="flex justify-between py-1">
-                  <span className="text-slate-400">Heatwave Tolerance:</span>
-                  <span className="font-bold text-cyan-300">Immune (C4 Bajra &gt;42°C)</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-5 p-3 bg-cyan-950/20 border border-cyan-900/40 rounded-xl text-xs text-cyan-200">
-              🌱 <b>Maximum Conservation:</b> Ideal for water-scarce zones and farmers aiming to restore organic carbon.
-            </div>
-          </div>
-
         </div>
       </div>
 
-      {/* Quick Farmer AI Assistant Chips */}
-      <div className="bg-[#1e293b]/70 border border-[#334155] rounded-2xl p-5 shadow-lg">
-        <div className="flex items-center space-x-2 text-xs font-semibold text-slate-300 mb-3">
-          <Sparkles className="w-4 h-4 text-[#8ab4f8]" />
-          <span>Ask Your AI Agronomist (Powered by NVIDIA NIM & NASA Grounding)</span>
+      {/* ── 4 Metric Cards ───────────────────────────── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <MetricCard
+          icon={Droplets} iconColor="#4f8ef7"
+          title="Soil Moisture"
+          value={moisture} unit="%"
+          status={mStat}
+          action={mStat.action}
+          onClick={() => onSelectTab('telemetry')}
+        />
+        <MetricCard
+          icon={Thermometer} iconColor="#f59e0b"
+          title="Peak Temperature"
+          value={tmax} unit="°C"
+          status={tStat}
+          action={tStat.action}
+          onClick={() => onSelectTab('forecast')}
+        />
+        <MetricCard
+          icon={CloudRain} iconColor="#06b6d4"
+          title="Rainfall Today"
+          value={rain} unit="mm"
+          status={rain > 10 ? { label: '🌧 Rainy', cls: 'status-info' } : { label: '☀️ Dry', cls: 'status-good' }}
+          action={rain > 10 ? 'No irrigation needed. Good natural recharge.' : 'No rain today. Monitor soil moisture closely.'}
+          onClick={() => onSelectTab('forecast')}
+        />
+        <MetricCard
+          icon={Sprout} iconColor="#22c55e"
+          title="Soil Health Score"
+          value={shi} unit="/100"
+          status={shStat}
+          action="See Rotations tab for improvement strategies."
+          onClick={() => onSelectTab('rotations')}
+        />
+      </div>
+
+      {/* ── Satellite Data Strip ─────────────────────── */}
+      <div className="rounded-xl px-5 py-4 flex flex-wrap gap-4 items-center justify-between"
+           style={{ background: '#0f1117', border: '1px solid #2a2d3e' }}>
+        <div className="flex items-center gap-2">
+          <div className="w-6 h-6 rounded flex items-center justify-center"
+               style={{ background: '#0b3d91' }}>
+            <Activity className="w-3 h-3 text-white" />
+          </div>
+          <span className="text-xs font-bold text-white">NASA Satellite Readings</span>
+          <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'rgba(34,197,94,0.1)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.2)' }}>
+            100% Free • No API Key
+          </span>
         </div>
-        
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-4">
           {[
-            "How do I sow Summer Moong right after harvesting wheat?",
-            "How much urea money can Sesbania green manure save me?",
-            "What should I do if a 38°C heatwave hits in March?",
-            "Is my soil pH 7.8 good for chickpea planting?",
-            "How does Happy Seeder straw mulching save irrigation water?"
-          ].map((q, idx) => (
+            { label: 'Air Temp', value: `${temp}°C`, color: '#f59e0b' },
+            { label: 'Wind', value: `${wind} m/s`, color: '#9ea3b8' },
+            { label: 'Solar', value: `${nasaObs?.solar_radiation_mj ?? 18.2} MJ/m²`, color: '#f59e0b' },
+            { label: 'NDVI', value: nasaObs?.ndvi?.toFixed(2) ?? '0.52', color: '#22c55e' },
+          ].map(s => (
+            <div key={s.label} className="text-xs">
+              <span style={{ color: '#6b7194' }}>{s.label}: </span>
+              <span className="font-bold metric-number" style={{ color: s.color }}>{s.value}</span>
+            </div>
+          ))}
+        </div>
+        <button onClick={() => onSelectTab('gis')}
+                className="text-xs font-semibold flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition"
+                style={{ background: '#1a1d27', border: '1px solid #2a2d3e', color: '#4f8ef7' }}>
+          View Satellite Map <ArrowRight className="w-3 h-3" />
+        </button>
+      </div>
+
+      {/* ── 3 Crop Rotation Cards ─────────────────────── */}
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-lg font-bold text-white">Crop Rotation Strategies</h2>
+            <p className="text-sm mt-0.5" style={{ color: '#9ea3b8' }}>
+              Based on NASA soil moisture, rainfall, and temperature data for your location
+            </p>
+          </div>
+          <button onClick={() => onSelectTab('rotations')}
+                  className="text-xs font-semibold flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition"
+                  style={{ background: '#1a1d27', border: '1px solid #2a2d3e', color: '#4f8ef7' }}>
+            Full Analysis <ArrowRight className="w-3 h-3" />
+          </button>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {ROTATIONS.map(rot => (
+            <RotationCard key={rot.id} rot={rot} onAskAi={onAskAi} />
+          ))}
+        </div>
+      </div>
+
+      {/* ── Quick AI Questions ───────────────────────── */}
+      <div className="rounded-xl p-5" style={{ background: '#1a1d27', border: '1px solid #2a2d3e' }}>
+        <div className="flex items-center gap-2 mb-4">
+          <Zap className="w-4 h-4" style={{ color: '#4f8ef7' }} />
+          <h3 className="text-sm font-bold text-white">Quick Questions for AI Agronomist</h3>
+          <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'rgba(79,142,247,0.1)', color: '#4f8ef7', border: '1px solid rgba(79,142,247,0.2)' }}>
+            Powered by NVIDIA Llama AI
+          </span>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {quickQuestions.map(q => (
             <button
-              key={idx}
+              key={q}
               onClick={() => onAskAi(q)}
-              className="bg-[#0f172a] hover:bg-[#1a73e8]/20 hover:border-[#1a73e8] border border-[#334155] text-slate-300 hover:text-white px-3.5 py-2 rounded-xl text-xs transition text-left flex items-center space-x-2"
+              className="text-sm px-4 py-2.5 rounded-lg font-medium transition hover:bg-white/5"
+              style={{ background: '#0f1117', border: '1px solid #2a2d3e', color: '#e8eaf6' }}
             >
-              <HelpCircle className="w-3.5 h-3.5 text-[#8ab4f8] flex-shrink-0" />
-              <span>{q}</span>
+              {q}
             </button>
           ))}
         </div>
       </div>
 
+      {/* ── Disclaimer ───────────────────────────────── */}
+      <div className="rounded-lg px-4 py-3 text-xs" style={{ background: '#0f1117', border: '1px solid #2a2d3e', color: '#6b7194' }}>
+        <strong className="text-white">ℹ️ Important:</strong> This tool uses NASA satellite data to support your decisions — it does not replace local farmer knowledge or expert advice. Always consult local agricultural extension officers before major changes.
+      </div>
     </div>
   );
 }

@@ -161,7 +161,7 @@ export default function App() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#131314] text-slate-100 flex flex-col font-sans selection:bg-[#1a73e8] selection:text-white">
+    <div className="min-h-screen flex flex-col font-sans" style={{ background: '#0f1117', color: '#e8eaf6' }}>
       
       {/* Navigation & Global Header */}
       <Navbar
@@ -180,18 +180,17 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6">
-        
         {/* Error notification banner if any */}
         {error && (
-          <div className="bg-rose-950/60 border border-rose-800 rounded-xl p-4 flex items-center justify-between text-xs text-rose-300">
-            <div className="flex items-center space-x-2">
-              <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0" />
+          <div className="rounded-xl p-4 flex items-center justify-between text-sm"
+               style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#fca5a5' }}>
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
               <span>{error}. Check backend server on port 8000.</span>
             </div>
-            <button
-              onClick={loadDataForLocation}
-              className="px-3 py-1 bg-rose-900 hover:bg-rose-800 text-white rounded-lg text-xs font-semibold"
-            >
+            <button onClick={loadDataForLocation}
+                    className="px-3 py-1 rounded-lg text-xs font-semibold"
+                    style={{ background: 'rgba(239,68,68,0.2)', color: '#fff' }}>
               Retry
             </button>
           </div>
@@ -200,13 +199,14 @@ export default function App() {
         {/* Loading state */}
         {loading && !soilReading ? (
           <div className="min-h-[60vh] flex flex-col items-center justify-center space-y-4">
-            <div className="w-12 h-12 rounded-2xl bg-[#202124] border border-[#3c4043] flex items-center justify-center animate-pulse">
-              <Satellite className="w-6 h-6 text-[#8ab4f8] animate-spin" />
+            <div className="w-12 h-12 rounded-2xl flex items-center justify-center animate-pulse"
+                 style={{ background: '#1a1d27', border: '1px solid #2a2d3e' }}>
+              <Satellite className="w-6 h-6 spin" style={{ color: '#4f8ef7' }} />
             </div>
             <div className="text-center">
-              <h3 className="text-base font-bold text-white">Connecting to Google Cloud & NASA Feeds</h3>
-              <p className="text-xs text-slate-400 mt-1">
-                Coordinates: <span className="font-mono text-[#8ab4f8]">{location.lat}° N, {location.lon}° E</span>
+              <h3 className="text-base font-bold text-white">Connecting to NASA Satellite Feeds…</h3>
+              <p className="text-xs mt-1" style={{ color: '#9ea3b8' }}>
+                Coordinates: <span className="font-mono" style={{ color: '#4f8ef7' }}>{location.lat}° N, {location.lon}° E</span>
               </p>
             </div>
           </div>
@@ -282,18 +282,16 @@ export default function App() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-[#3c4043] bg-[#18191c] py-5 text-center text-xs text-slate-400">
-        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3 font-sans">
-          <div className="flex items-center space-x-2">
-            <span className="font-bold text-white">Google Cloud & NASA Earth Engine</span>
+      <footer className="py-4 text-center text-xs" style={{ borderTop: '1px solid #1e2130', background: '#0a0c14', color: '#6b7194' }}>
+        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-white">FIELD SHIFT</span>
             <span>•</span>
-            <span className="text-[#8ab4f8]">FIELD SHIFT Farm Decision OS</span>
+            <span>NASA Space Apps Challenge 2026</span>
           </div>
-          <div>
-            Open NASA Satellite Fleet (SMAP, GPM IMERG, MODIS, Landsat) & In-Situ 8-in-1 IoT Telemetry.
-          </div>
-          <div className="text-[11px] text-slate-400 font-mono">
-            Target: {location.lat.toFixed(4)}° N, {location.lon.toFixed(4)}° E
+          <div>SMAP · GPM IMERG · MODIS · Landsat · NASA POWER · GRACE-FO · ECOSTRESS</div>
+          <div className="font-mono" style={{ color: '#9ea3b8' }}>
+            {location.lat.toFixed(4)}° N, {location.lon.toFixed(4)}° E
           </div>
         </div>
       </footer>
