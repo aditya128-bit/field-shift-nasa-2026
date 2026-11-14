@@ -1,71 +1,79 @@
 {
-  "current_crop": "Wheat",
-  "sow_date": "2026-10-18",
-  "manual_stage": "Tillering & Jointing",
+  "current_crop": "Rice",
+  "sow_date": "2026-11-15",
+  "manual_stage": null,
   "crop_profile": {
-    "name": "Wheat",
+    "name": "Rice",
     "emoji": "\ud83c\udf3e",
-    "season": "Rabi",
+    "season": "Kharif",
     "duration_days": 120,
     "thresholds": {
-      "soil_moisture_min": 20,
-      "soil_moisture_max": 35,
-      "soil_moisture_critical_low": 15,
-      "temp_min_c": 10.0,
-      "temp_max_c": 28.0,
-      "heat_stress_c": 32.0,
-      "frost_risk_c": 3.0,
-      "rainfall_min_season_mm": 450,
-      "rainfall_max_24h_mm": 60,
-      "ph_min": 6.0,
-      "ph_max": 7.5,
-      "ndvi_healthy_min": 0.5
+      "soil_moisture_min": 40,
+      "soil_moisture_max": 80,
+      "soil_moisture_critical_low": 25,
+      "temp_min_c": 15.0,
+      "temp_max_c": 35.0,
+      "heat_stress_c": 38.0,
+      "frost_risk_c": 4.0,
+      "rainfall_min_season_mm": 600,
+      "rainfall_max_24h_mm": 100,
+      "ph_min": 5.5,
+      "ph_max": 7.0,
+      "ndvi_healthy_min": 0.6
     },
-    "water_need_mm_season": 450,
-    "nitrogen_kg_ha": 120,
+    "water_need_mm_season": 1200,
+    "nitrogen_kg_ha": 110,
     "stages": [
       {
-        "name": "Sowing & Germination",
-        "days": 15,
-        "month_offset": 0
-      },
-      {
-        "name": "Tillering & Jointing",
-        "days": 40,
-        "month_offset": 0
-      },
-      {
-        "name": "Heading & Flowering",
+        "name": "Nursery & Transplanting",
         "days": 25,
+        "month_offset": 0
+      },
+      {
+        "name": "Tillering",
+        "days": 35,
+        "month_offset": 0
+      },
+      {
+        "name": "Panicle Initiation & Flowering",
+        "days": 30,
         "month_offset": 1
       },
       {
-        "name": "Milk & Dough Stage",
-        "days": 25,
+        "name": "Grain Filling",
+        "days": 20,
         "month_offset": 2
       },
       {
-        "name": "Maturity & Harvest",
-        "days": 15,
+        "name": "Ripening & Harvest",
+        "days": 10,
         "month_offset": 3
       }
     ],
     "organic_fertilizers": [
-      "Azotobacter and PSB seed treatment",
+      "Azospirillum and PSB seed treatment",
       "Vermicompost at 5 tonnes per hectare",
-      "Sunn hemp green manuring prior to sowing"
+      "Dhaincha (Sesbania) green manuring"
     ],
     "hazard_warnings": {
-      "heat_risk": "Terminal heat stress during grain filling reduces plumpness",
-      "moisture_risk": "Susceptibility to root rot during heavy winter rains",
-      "pest_alert": "Yellow Rust (Puccinia striiformis) during high humidity"
+      "heat_risk": "Sterility risk if temperatures exceed 38\u00b0C during anthesis",
+      "moisture_risk": "High sensitivity to drought during panicle initiation",
+      "pest_alert": "Brown Plant Hopper (BPH) and Blast fungus during high humidity"
     },
-    "market_notes": "High demand in NCR region; supported by Minimum Support Price (MSP)",
-    "llm_reasoning": "Coordinates correspond to the Indo-Gangetic Plain where wheat requires cool temperatures for vernalization and is highly sensitive to terminal heat above 32\u00b0C. Soil moisture thresholds are calibrated for alluvial loams to prevent waterlogging while maintaining turgor during the critical booting stage.",
+    "market_notes": "High demand in NCR region; supported by Minimum Support Price (MSP) for Basmati and Non-Basmati varieties.",
+    "llm_reasoning": "Coordinates place the farm in the Indo-Gangetic plain where rice requires high soil saturation (puddling) to minimize percolation. Heat ceilings are set to 38\u00b0C to account for the critical temperature threshold that triggers pollen sterility in tropical cultivars.",
     "source": "NVIDIA NIM (google/gemma-4-31b-it)",
     "generated_by_llm": true
   },
   "rotation_history": [
+    {
+      "crop": "Wheat",
+      "season": "Rabi",
+      "sow_date": "2026-10-18",
+      "harvest_date": "2026-11-15",
+      "duration_days": 28,
+      "soil_legacy": "Preceding crop before rotation to Rice. Residual nutrient drawdown and root biomass."
+    },
     {
       "crop": "Rice (Basmati Paddy)",
       "season": "Kharif 2026",

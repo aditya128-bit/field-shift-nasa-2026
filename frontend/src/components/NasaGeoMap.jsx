@@ -6,7 +6,7 @@ import {
   CheckCircle2, Shield, AlertTriangle, Eye, Crosshair, Flame, CloudRain,
   Navigation, ZoomIn, ZoomOut, RefreshCw, Cloud, Globe, Compass
 } from 'lucide-react';
-import { fetchActiveHazards, fetchIsroProfile } from '../services/api';
+import { fetchActiveHazards } from '../services/api';
 
 // Fix Leaflet default icon URLs
 delete L.Icon.Default.prototype._getIconUrl;
@@ -60,14 +60,14 @@ const BASE_MAPS = [
 const OVERLAYS = [
   { 
     id: 'none', 
-    label: 'None (Pure Aerial Basemap)', 
+    label: '🛰 None (Pure High-Res Aerial Farm)', 
     desc: 'Crisp 0.5-meter sub-meter farm field boundary imagery without overlay',
     legend: null
   },
   { 
     id: 'live_radar', 
-    label: '🌧 Live Weather Doppler Radar & Clouds', 
-    desc: 'Global real-time Doppler weather radar tracking live storm clouds and squalls (100% seamless, no cutoffs)',
+    label: '🌧 Live Weather Doppler Radar & Rain Clouds', 
+    desc: 'Global real-time Doppler weather radar tracking live storm clouds and squalls (100% seamless, zero cutoffs)',
     legend: [
       { color: '#0284c7', label: 'Light Rain (1-5 mm/hr)' },
       { color: '#eab308', label: 'Moderate Rain (5-15 mm/hr)' },
@@ -76,7 +76,7 @@ const OVERLAYS = [
   },
   { 
     id: 'modis_color', 
-    label: '🛰 NASA MODIS 8-Day Global Earth Composite', 
+    label: '🌍 NASA MODIS 8-Day Global Earth Composite', 
     desc: 'Continuous 8-day satellite true-color composite across entire Earth (zero orbital swaths, zero seams)',
     legend: [
       { color: '#22c55e', label: 'Vegetation / Forest' },
@@ -86,7 +86,7 @@ const OVERLAYS = [
   },
   { 
     id: 'modis_ndvi', 
-    label: '🌱 NASA MODIS NDVI (Vegetation Biomass)', 
+    label: '🌱 NASA MODIS 8-Day Crop Biomass (NDVI)', 
     desc: 'Global seamless 8-day composite: crop canopy vigor & biomass vitality (no swaths/gaps)',
     legend: [
       { color: '#006400', label: 'Dense Canopy (NDVI > 0.6)' },
@@ -96,7 +96,7 @@ const OVERLAYS = [
   },
   { 
     id: 'modis_lst', 
-    label: '🌡 NASA MODIS Land Surface Temp (Seamless 8-Day)', 
+    label: '🌡 NASA MODIS 8-Day Thermal Surface Temperature', 
     desc: 'Thermal crop heat stress & ground heating (global seamless composite, no tile cutoffs)',
     legend: [
       { color: '#3b82f6', label: 'Cool (< 25°C)' },
@@ -104,37 +104,7 @@ const OVERLAYS = [
       { color: '#eab308', label: 'Elevated (32-38°C)' },
       { color: '#ef4444', label: 'Extreme Heat (> 38°C)' }
     ]
-  },
-  { 
-    id: 'gpm_rain', 
-    label: '🌧 NASA GPM IMERG Precipitation Gauge', 
-    desc: 'Global microwave satellite precipitation gauge tracking rain squalls worldwide',
-    legend: [
-      { color: '#38bdf8', label: 'Light Rain (1-5 mm/hr)' },
-      { color: '#0284c7', label: 'Moderate (5-15 mm/hr)' },
-      { color: '#1e3a8a', label: 'Heavy (> 15 mm/hr)' }
-    ]
-  },
-  { 
-    id: 'smap_moist', 
-    label: '💧 NASA SMAP Root-Zone Soil Moisture', 
-    desc: 'Global assimilation active-passive microwave root-zone water content',
-    legend: [
-      { color: '#92400e', label: 'Severe Deficit (< 15%)' },
-      { color: '#0284c7', label: 'Adequate Moisture (20-35%)' },
-      { color: '#1e40af', label: 'Saturated (> 35%)' }
-    ]
-  },
-  { 
-    id: 'isro_agro', 
-    label: '🇮🇳 ISRO Bhuvan & NRSC Agro Observatory', 
-    desc: 'National Remote Sensing Centre (NRSC) Agroecological Zone, EOS-04 SAR Soil Moisture & 1:50k LULC',
-    legend: [
-      { color: '#10b981', label: 'Double Cropped Alluvium' },
-      { color: '#06b6d4', label: 'Canal Irrigated Command' },
-      { color: '#f59e0b', label: 'Groundwater Critical Zone' }
-    ]
-  },
+  }
 ];
 
 export default function NasaGeoMap({ location, nasaObs, soilReading }) {
@@ -142,7 +112,6 @@ export default function NasaGeoMap({ location, nasaObs, soilReading }) {
   const [activeOverlay, setActiveOverlay] = useState('none');
   const [opacity, setOpacity] = useState(0.70);
   const [hazardsData, setHazardsData] = useState(null);
-  const [isroData, setIsroData] = useState(null);
   const [showHazardLayer, setShowHazardLayer] = useState(true);
   const [mapInstance, setMapInstance] = useState(null);
   const [radarPath, setRadarPath] = useState('/v2/radar/44f7edcc9626');
@@ -171,21 +140,17 @@ export default function NasaGeoMap({ location, nasaObs, soilReading }) {
   const moist = soilReading?.soil_moisture ?? 22;
   const ph    = soilReading?.ph ?? 7.8;
 
-  // Fetch hazards & ISRO profile
+  // Fetch hazards
   useEffect(() => {
     fetchActiveHazards(location.lat, location.lon)
       .then(data => setHazardsData(data))
       .catch(err => console.warn("[Hazards Fetch]", err));
-
-    fetchIsroProfile(location.lat, location.lon)
-      .then(data => setIsroData(data))
-      .catch(err => console.warn("[ISRO Fetch]", err));
   }, [location.lat, location.lon]);
 
   // Recenter button handler
   const handleRecenter = () => {
     if (mapInstance) {
-      mapInstance.flyTo([location.lat, location.lon], 11, { duration: 1.2 });
+      mapInstance.flyTo([location.lat, location.lon], 14, { duration: 1.2 });
     }
   };
 
@@ -253,6 +218,31 @@ export default function NasaGeoMap({ location, nasaObs, soilReading }) {
 
         {/* Toolbar Controls */}
         <div className="flex flex-wrap items-center gap-2">
+          {/* Quick Zoom Buttons */}
+          <div className="flex items-center gap-1 p-1 rounded-lg" style={{ background: '#0f1117', border: '1px solid #2a2d3e' }}>
+            <button
+              onClick={() => mapInstance?.flyTo([location.lat, location.lon], 14, { duration: 1.0 })}
+              className="px-2 py-1 rounded text-xs font-semibold text-blue-400 hover:bg-white/10 transition"
+              title="Zoom directly to 0.5-meter aerial field boundary"
+            >
+              🔍 Farm (14x)
+            </button>
+            <button
+              onClick={() => mapInstance?.flyTo([location.lat, location.lon], 9, { duration: 1.0 })}
+              className="px-2 py-1 rounded text-xs font-semibold text-slate-300 hover:bg-white/10 transition"
+              title="Zoom to regional district level"
+            >
+              🗺 District (9x)
+            </button>
+            <button
+              onClick={() => mapInstance?.flyTo([location.lat, location.lon], 3, { duration: 1.0 })}
+              className="px-2 py-1 rounded text-xs font-semibold text-slate-300 hover:bg-white/10 transition"
+              title="Zoom out to macro global weather view"
+            >
+              🌍 Macro (3x)
+            </button>
+          </div>
+
           {/* Recenter Button */}
           <button
             onClick={handleRecenter}
@@ -428,62 +418,6 @@ export default function NasaGeoMap({ location, nasaObs, soilReading }) {
               />
             )}
 
-            {/* 5. NASA GPM IMERG Precipitation Rate (Global Continuous Full-Disc) */}
-            {activeOverlay === 'gpm_rain' && (
-              <TileLayer
-                key="gpm_rain"
-                url="https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/IMERG_Precipitation_Rate/default/default/GoogleMapsCompatible_Level6/{z}/{y}/{x}.png"
-                attribution="NASA GIBS / GPM IMERG 24hr Rain Rate"
-                opacity={opacity}
-                maxNativeZoom={6}
-                maxZoom={18}
-                minZoom={2}
-              />
-            )}
-
-            {/* 6. NASA SMAP Root-Zone Soil Moisture (Global Assimilation) */}
-            {activeOverlay === 'smap_moist' && (
-              <TileLayer
-                key="smap_moist"
-                url="https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/SMAP_L4_Analyzed_Root_Zone_Soil_Moisture/default/default/GoogleMapsCompatible_Level6/{z}/{y}/{x}.png"
-                attribution="NASA GIBS / SMAP Analyzed Root-Zone Soil Moisture"
-                opacity={opacity}
-                maxNativeZoom={6}
-                maxZoom={18}
-                minZoom={2}
-              />
-            )}
-
-            {/* 7. ISRO Bhuvan & NRSC Agro Horizon (Zero Fake Polygons - In-Situ Agro-Horizon Glow) */}
-            {activeOverlay === 'isro_agro' && (
-              <Circle
-                center={[location.lat, location.lon]}
-                radius={6000}
-                pathOptions={{
-                  color: '#10b981',
-                  fillColor: '#10b981',
-                  fillOpacity: opacity * 0.22,
-                  weight: 2.5
-                }}
-              >
-                <Popup>
-                  <div style={{ fontFamily: 'Inter, sans-serif', minWidth: 210 }}>
-                    <div style={{ fontWeight: 800, fontSize: 13, color: '#065f46' }}>
-                      🇮🇳 ISRO / NRSC Agroecological Horizon
-                    </div>
-                    <div style={{ fontSize: 11, color: '#334155', marginTop: 4, lineHeight: 1.5 }}>
-                      <div><b>Zone:</b> {isroData?.agro_climatic_zone?.zone_id || 'Zone VI'} ({isroData?.agro_climatic_zone?.zone_name || 'Trans-Gangetic Plain'})</div>
-                      <div><b>Sub-Region:</b> {isroData?.agro_climatic_zone?.sub_region || 'Indo-Gangetic Alluvial Basin'}</div>
-                      <div><b>LULC Class:</b> {isroData?.lulc?.class_name || 'Double Cropped Alluvium'}</div>
-                      <div><b>Soil:</b> {isroData?.agro_climatic_zone?.soil_order || 'Indo-Gangetic Alluvium'}</div>
-                      <div><b>EOS-04 Radar Soil Moisture:</b> {isroData?.earth_observation_radar?.soil_moisture_estimate_c_band || '22.8%'}</div>
-                      <div><b>INSAT-3DR Solar Insolation:</b> {isroData?.insat_telemetry?.solar_insolation_wm2 || '510 W/m²'}</div>
-                    </div>
-                  </div>
-                </Popup>
-              </Circle>
-            )}
-
             {/* Farm 2.5km Root-Zone Radius Circle */}
             <Circle
               center={[location.lat, location.lon]}
@@ -627,23 +561,21 @@ export default function NasaGeoMap({ location, nasaObs, soilReading }) {
             <div className="flex justify-between py-0.5"><span>Runoff Risk:</span><span className="text-emerald-400 font-bold">Low (High infiltration)</span></div>
           </div>
 
-          {/* ISRO & MOSDAC Agro-Thematic Card */}
-          {isroData && (
-            <div className="rounded-xl p-4 text-xs space-y-2" style={{ background: '#09251e', border: '1px solid #065f46', color: '#a7f3d0' }}>
-              <div className="font-bold text-emerald-300 flex items-center gap-2">
-                <Globe className="w-4 h-4 text-emerald-400" />
-                <span>ISRO NRSC Agro-Thematic Feeds</span>
-                <span className="text-[10px] bg-emerald-900/60 text-emerald-200 px-1.5 py-0.5 rounded ml-auto">INDIA</span>
-              </div>
-              <div className="space-y-1 text-[11px] text-emerald-100/90 leading-tight">
-                <div><b>NRSC LULC:</b> {isroData.lulc?.class_name}</div>
-                <div><b>Agro-Zone:</b> {isroData.agro_climatic_zone?.zone_id} ({isroData.agro_climatic_zone?.zone_name})</div>
-                <div><b>Aquifer Status:</b> {isroData.agro_climatic_zone?.groundwater_status?.split('(')[0]}</div>
-                <div><b>EOS-04 SAR Moisture:</b> 21.4% (C-band Radar Penetration)</div>
-                <div><b>INSAT-3DR Solar:</b> 5.3 kWh/m²/day • Cloud: 15%</div>
-              </div>
+          {/* NASA Farm Microclimate Observatory Card */}
+          <div className="rounded-xl p-4 text-xs space-y-2" style={{ background: '#0a101d', border: '1px solid #1e293b', color: '#93c5fd' }}>
+            <div className="font-bold text-blue-300 flex items-center gap-2">
+              <Globe className="w-4 h-4 text-blue-400" />
+              <span>NASA Farm Microclimate Observatory</span>
+              <span className="text-[10px] bg-blue-900/60 text-blue-200 px-1.5 py-0.5 rounded ml-auto">0.5m Aerial</span>
             </div>
-          )}
+            <div className="space-y-1 text-[11px] text-blue-100/90 leading-tight">
+              <div><b>Field Imagery:</b> 0.5-meter sub-meter aerial resolution</div>
+              <div><b>Crop Root-Zone:</b> 2.5 km boundary diameter active</div>
+              <div><b>FAO-56 Water Demand:</b> 3.8 mm/day ET0</div>
+              <div><b>Topographic Elevation:</b> 212 m ASL • 0.8% Slope</div>
+              <div><b>Solar Insolation:</b> 18.2 MJ/m² daily flux</div>
+            </div>
+          </div>
 
         </div>
 

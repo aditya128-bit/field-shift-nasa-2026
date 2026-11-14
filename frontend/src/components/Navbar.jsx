@@ -140,6 +140,20 @@ export default function Navbar({
             <Cpu className="w-3 h-3" />
             IoT Sim
           </div>
+          {/* Force Cache Bust & Reload Button */}
+          <button
+            onClick={() => {
+              try {
+                localStorage.removeItem("field_shift_active_tab");
+              } catch (_) {}
+              window.location.href = `/?bust=${Date.now()}`;
+            }}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold text-amber-300 bg-amber-500/15 border border-amber-500/35 hover:bg-amber-500/25 transition shadow-sm"
+            title="Click to force-reload fresh frontend version from server (bypasses browser cache)"
+          >
+            <RotateCw className="w-3 h-3 text-amber-400" />
+            <span>v2.5 Fresh</span>
+          </button>
           {/* GPS button (mobile) */}
           <button onClick={handleGPS}
                   className="p-2 rounded-lg transition hover:bg-white/5"
