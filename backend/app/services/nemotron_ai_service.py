@@ -1,8 +1,42 @@
 import os
+import re
+import html
+import requests
 from openai import OpenAI
 from typing import List, Dict, Any, Optional
 from ..config import settings
 from ..models.schemas import SoilReading, NasaObservation, ChatResponse
+
+def search_open_knowledge(query: str, max_results: int = 3) -> List[Dict[str, str]]:
+    """
+    Open public knowledge search via official Wikipedia REST API (100% free, zero keys, zero bot blocks).
+    Fetches real-time encyclopedic & agricultural context without spoofing browser identity.
+    """
+    url = "https://en.wikipedia.org/w/api.php"
+    params = {
+        "action": "query",
+        "list": "search",
+        "srsearch": f"{query} agriculture farming crop",
+        "format": "json",
+        "utf8": 1
+    }
+    headers = {"User-Agent": "FieldShiftNASAApp/1.0 (https://spaceappschallenge.org; educational research)"}
+    try:
+        r = requests.get(url, params=params, headers=headers, timeout=5)
+        if r.status_code == 200:
+            hits = r.json().get("query", {}).get("search", [])
+            results = []
+            for h in hits[:max_results]:
+                clean_snippet = re.sub(r'<[^>]+>', '', html.unescape(h.get("snippet", "")))
+                results.append({
+                    "title": h.get("title", "Reference"),
+                    "snippet": clean_snippet,
+                    "url": f"https://en.wikipedia.org/wiki/{requests.utils.quote(h.get('title', ''))}"
+                })
+            return results
+    except Exception as e:
+        print(f"[Knowledge Search Notice] {e}")
+    return []
 
 class NemotronAIService:
     def __init__(self):
@@ -129,9 +163,17 @@ SCIENTIFIC OBJECTIVES & RESPONSE STANDARDS:
         reply_text += f"\n\n#### 🌿 Natural Soil Enrichment Protocols:\n" + "\n".join([f"- {tip}" for tip in soil_tips[:2]])
         reply_text += f"\n\n#### 🤝 Recommended Intercropping Architecture:\n" + "\n".join([f"- {rec}" for rec in recommendations])
 
+        # 3. Live Web Knowledge Grounding (Zero Keys, 100% Free)
+        search_hits = search_open_knowledge(query)
+        if search_hits:
+            web_grounding_section = "\n\n#### 🌐 Live Open Agricultural Web Grounding:\n"
+            for hit in search_hits:
+                web_grounding_section += f"- **{hit['title']}**: {hit['snippet']} ([Source]({hit['url']}))\n"
+            reply_text += web_grounding_section
+
         return ChatResponse(
             reply=reply_text,
-            source_model="FIELD SHIFT Agronomy Intelligence Engine (NASA & Indo-Gangetic Ground Truth Fusion)",
+            source_model="FIELD SHIFT Agronomy Intelligence Engine (NASA, Edge IoT & Open Web Grounding)",
             recommendations=recommendations,
             soil_enrichment_tips=soil_tips,
             suggested_rotations=rotations
@@ -150,7 +192,12 @@ SCIENTIFIC OBJECTIVES & RESPONSE STANDARDS:
                 timeout=30.0
             )
 
-            system_prompt = self._build_system_prompt(soil, nasa)
+            search_hits = search_open_knowledge(user_message)
+            grounding_text = ""
+            if search_hits:
+                grounding_text = "\nLIVE OPEN WEB KNOWLEDGE GROUNDING:\n" + "\n".join([f"- {h['title']}: {h['snippet']}" for h in search_hits])
+
+            system_prompt = self._build_system_prompt(soil, nasa) + grounding_text
 
             completion = client.chat.completions.create(
                 model=self.model,
