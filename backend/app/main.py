@@ -17,6 +17,7 @@ from .services.nasa_service import nasa_service
 from .services.rotation_engine import rotation_engine
 from .services.predictive_models import predictive_service
 from .services.nemotron_ai_service import nemotron_ai_service
+from .services.online_learning_service import online_learning_service
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -162,6 +163,11 @@ def get_30_day_forecast(
     soil = soil_iot_service.get_latest()
     nasa = nasa_service.fetch_observations(lat, lon)
     return predictive_service.generate_30_day_forecast(nasa, soil)
+
+@app.get("/api/ml/online-status")
+def get_online_learning_status():
+    """Returns diagnostics and weights from the online adaptive learning engine (SGDRegressor partial_fit)."""
+    return online_learning_service.get_status()
 
 @app.post("/api/chat", response_model=ChatResponse)
 def chat_with_nemotron_agronomist(

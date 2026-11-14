@@ -4,6 +4,7 @@ import random
 from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Any
 from ..models.schemas import SoilReading, SoilReadingCreate
+from .online_learning_service import online_learning_service
 
 class SoilIoTService:
     def __init__(self):
@@ -120,6 +121,14 @@ class SoilIoTService:
             self.history.append(self.latest_reading)
             if len(self.history) > self.max_history:
                 self.history.pop(0)
+            # Adapt online learning model dynamically on every live telemetry tick
+            try:
+                online_learning_service.stream_step(
+                    ground_moisture=self.latest_reading.soil_moisture,
+                    temp_c=self.latest_reading.soil_temperature
+                )
+            except Exception as e:
+                pass
         return self.latest_reading
 
     def get_history(self, limit: int = 50) -> List[SoilReading]:
@@ -158,6 +167,15 @@ class SoilIoTService:
         self.history.append(reading)
         if len(self.history) > self.max_history:
             self.history.pop(0)
+
+        # Trigger immediate online learning adaptation on real hardware payload
+        try:
+            online_learning_service.stream_step(
+                ground_moisture=data.soil_moisture,
+                temp_c=data.soil_temperature
+            )
+        except Exception as e:
+            pass
 
         return reading
 

@@ -55,6 +55,12 @@ export async function fetchForecast(lat = 28.6139, lon = 77.2090) {
   return res.json();
 }
 
+export async function fetchOnlineLearningStatus() {
+  const res = await fetch(`${API_BASE}/ml/online-status`);
+  if (!res.ok) throw new Error("Failed to fetch online learning status");
+  return res.json();
+}
+
 export async function sendChatMessage(message, apiKey = null) {
   const res = await fetch(`${API_BASE}/chat`, {
     method: "POST",
