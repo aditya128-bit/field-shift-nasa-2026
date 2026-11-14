@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap, Circle, WMSTileLayer } from 'react-leaflet';
+import React, { useState, useEffect, useRef } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, useMap, Circle } from 'react-leaflet';
 import L from 'leaflet';
 import { 
   Satellite, Layers, Sun, Thermometer, Droplet, Wind, Activity, 
-  CheckCircle2, Shield, AlertTriangle, Eye, Crosshair, Flame, CloudRain
+  CheckCircle2, Shield, AlertTriangle, Eye, Crosshair, Flame, CloudRain,
+  Navigation, ZoomIn, ZoomOut, RefreshCw
 } from 'lucide-react';
 import { fetchActiveHazards } from '../services/api';
 
@@ -15,28 +16,101 @@ L.Icon.Default.mergeOptions({
   shadowUrl:     'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
 });
 
-function MapController({ coords, zoom }) {
+// Map Controller: ONLY shifts view when user genuinely changes farm coordinates, NOT on zoom/pan or re-render
+function FarmMapController({ lat, lon, setMapInstance }) {
   const map = useMap();
+  const prevCoordsRef = useRef({ lat: null, lon: null });
+
   useEffect(() => {
-    map.setView(coords, zoom || map.getZoom());
-  }, [coords, zoom]);
+    setMapInstance(map);
+  }, [map, setMapInstance]);
+
+  useEffect(() => {
+    // Only reposition if lat/lon genuinely changed from outside
+    if (prevCoordsRef.current.lat !== lat || prevCoordsRef.current.lon !== lon) {
+      prevCoordsRef.current = { lat, lon };
+      map.setView([lat, lon], map.getZoom() || 11);
+    }
+  }, [lat, lon, map]);
+
   return null;
 }
 
 const BASE_MAPS = [
-  { id: 'satellite', label: '🛰 High-Res Satellite', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', attr: 'Tiles © Esri — Source: Esri, USDA, USGS' },
-  { id: 'topo',      label: '🗺 Topo & Terrain',     url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', attr: 'Tiles © Esri — DeLorme, NAVTEQ' },
-  { id: 'osm',       label: '🌍 OpenStreetMap',      url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', attr: '© OpenStreetMap contributors' },
+  { 
+    id: 'satellite', 
+    label: '🛰 High-Res Satellite', 
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', 
+    attr: 'Tiles © Esri — Source: Esri, USDA, USGS' 
+  },
+  { 
+    id: 'topo', 
+    label: '🗺 Topo & Terrain', 
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', 
+    attr: 'Tiles © Esri — DeLorme, NAVTEQ' 
+  },
+  { 
+    id: 'osm', 
+    label: '🌍 OpenStreetMap', 
+    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', 
+    attr: '© OpenStreetMap contributors' 
+  },
 ];
 
 const OVERLAYS = [
-  { id: 'none',        label: 'None (Pure Basemap)',  desc: 'Sub-meter farm field imagery without overlay' },
-  { id: 'modis_ndvi',  label: '🌱 NASA MODIS NDVI (Vegetation Index)', desc: 'Crop vigor & biomass vitality (8-day composite)' },
-  { id: 'modis_lst',   label: '🌡 NASA MODIS Land Surface Temp', desc: 'Thermal heat stress & surface temperature' },
-  { id: 'gpm_rain',    label: '🌧 NASA GPM IMERG Precipitation', desc: 'Global precipitation measurement satellite feed' },
-  { id: 'smap_moist',  label: '💧 NASA SMAP Soil Moisture', desc: 'Root-zone active microwave soil moisture' },
-  { id: 'modis_color', label: '📸 NASA MODIS True Color Reflectance', desc: 'Natural color Terra corrected reflectance' },
-  { id: 'isro_lulc',   label: '🇮🇳 ISRO Bhuvan Land Cover (LULC)', desc: 'Indian Space Research Organisation agro-thematic mapping' },
+  { 
+    id: 'none', 
+    label: 'None (Pure Basemap)', 
+    desc: 'Clear high-resolution field boundary view with no overlay',
+    legend: null
+  },
+  { 
+    id: 'modis_ndvi', 
+    label: '🌱 NASA MODIS NDVI (Vegetation Biomass)', 
+    desc: 'Vegetation canopy vitality & crop vigor index (Terra 8-day composite)',
+    legend: [
+      { color: '#006400', label: 'Dense Canopy (NDVI > 0.6)' },
+      { color: '#90ee90', label: 'Moderate Vigor (0.3 - 0.6)' },
+      { color: '#d2b48c', label: 'Sparse / Fallow Soil (< 0.3)' }
+    ]
+  },
+  { 
+    id: 'modis_lst', 
+    label: '🌡 NASA MODIS Land Surface Temp (Day LST)', 
+    desc: 'Thermal surface heating & crop heat stress monitoring',
+    legend: [
+      { color: '#3b82f6', label: 'Cool (< 25°C)' },
+      { color: '#22c55e', label: 'Optimal (25-32°C)' },
+      { color: '#eab308', label: 'Elevated (32-38°C)' },
+      { color: '#ef4444', label: 'Extreme Heat (> 38°C)' }
+    ]
+  },
+  { 
+    id: 'gpm_rain', 
+    label: '🌧 NASA GPM IMERG Precipitation Rate', 
+    desc: 'Global microwave satellite precipitation gauge',
+    legend: [
+      { color: '#38bdf8', label: 'Light Rain (1-5 mm/hr)' },
+      { color: '#0284c7', label: 'Moderate (5-15 mm/hr)' },
+      { color: '#1e3a8a', label: 'Heavy (> 15 mm/hr)' }
+    ]
+  },
+  { 
+    id: 'smap_moist', 
+    label: '💧 NASA SMAP Root-Zone Soil Moisture', 
+    desc: 'Active-passive microwave root-zone water content',
+    legend: [
+      { color: '#92400e', label: 'Severe Deficit (< 15%)' },
+      { color: '#0284c7', label: 'Adequate Moisture (20-35%)' },
+      { color: '#1e40af', label: 'Saturated (> 35%)' }
+    ]
+  },
+  { 
+    id: 'modis_color', 
+    label: '📸 NASA MODIS Natural True Color', 
+    desc: 'Direct daily optical reflectance pass (Terra/Aqua)',
+    legend: null
+  },
 ];
 
 export default function NasaGeoMap({ location, nasaObs, soilReading }) {
@@ -45,17 +119,11 @@ export default function NasaGeoMap({ location, nasaObs, soilReading }) {
   const [opacity, setOpacity] = useState(0.70);
   const [hazardsData, setHazardsData] = useState(null);
   const [showHazardLayer, setShowHazardLayer] = useState(true);
-
-  const coords = [location.lat, location.lon];
-
-  // GIBS safe historical date (2 days prior to today for 100% processed global coverage)
-  const gibsDate = (() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 3);
-    return d.toISOString().split('T')[0];
-  })();
+  const [mapInstance, setMapInstance] = useState(null);
 
   const base = BASE_MAPS.find(b => b.id === baseMap) || BASE_MAPS[0];
+  const activeOverlayInfo = OVERLAYS.find(o => o.id === activeOverlay);
+
   const temp  = nasaObs?.temp_2m ?? 24.5;
   const tmax  = nasaObs?.temp_max ?? 30.5;
   const rain  = nasaObs?.precipitation_mm ?? 0;
@@ -64,14 +132,21 @@ export default function NasaGeoMap({ location, nasaObs, soilReading }) {
   const moist = soilReading?.soil_moisture ?? 22;
   const ph    = soilReading?.ph ?? 7.8;
 
-  // Fetch live hazards on mount
+  // Fetch hazards
   useEffect(() => {
     fetchActiveHazards(location.lat, location.lon)
       .then(data => setHazardsData(data))
       .catch(err => console.warn("[Hazards Fetch]", err));
   }, [location.lat, location.lon]);
 
-  // Farm marker icon
+  // Recenter button handler
+  const handleRecenter = () => {
+    if (mapInstance) {
+      mapInstance.flyTo([location.lat, location.lon], 11, { duration: 1.2 });
+    }
+  };
+
+  // Custom Farm Marker
   const farmIcon = L.divIcon({
     className: '',
     html: `
@@ -84,31 +159,27 @@ export default function NasaGeoMap({ location, nasaObs, soilReading }) {
     iconAnchor: [11, 11],
   });
 
-  // Cyclone icon
   const cycloneIcon = L.divIcon({
     className: '',
     html: `
-      <div style="background:#ec4899; color:#fff; width:28px; height:28px; border-radius:50%; border:2px solid #fff; display:flex; align-items:center; justify-content:center; font-size:16px; box-shadow:0 0 15px #ec4899;">
+      <div style="background:#ec4899; color:#fff; width:26px; height:26px; border-radius:50%; border:2px solid #fff; display:flex; align-items:center; justify-content:center; font-size:15px; box-shadow:0 0 14px #ec4899;">
         🌀
       </div>
     `,
-    iconSize: [28, 28],
-    iconAnchor: [14, 14],
+    iconSize: [26, 26],
+    iconAnchor: [13, 13],
   });
 
-  // Fire hotspot icon
   const fireIcon = L.divIcon({
     className: '',
     html: `
-      <div style="background:#f97316; color:#fff; width:22px; height:22px; border-radius:50%; border:2px solid #fff; display:flex; align-items:center; justify-content:center; font-size:12px; box-shadow:0 0 10px #f97316;">
+      <div style="background:#f97316; color:#fff; width:20px; height:20px; border-radius:50%; border:2px solid #fff; display:flex; align-items:center; justify-content:center; font-size:11px; box-shadow:0 0 10px #f97316;">
         🔥
       </div>
     `,
-    iconSize: [22, 22],
-    iconAnchor: [11, 11],
+    iconSize: [20, 20],
+    iconAnchor: [10, 10],
   });
-
-  const activeOverlayInfo = OVERLAYS.find(o => o.id === activeOverlay);
 
   return (
     <div className="space-y-5 tab-panel">
@@ -119,7 +190,7 @@ export default function NasaGeoMap({ location, nasaObs, soilReading }) {
         <div>
           <div className="flex flex-wrap items-center gap-2 mb-1.5">
             <span className="text-xs font-bold px-2 py-0.5 rounded" style={{ background: '#0b3d91', color: '#fff' }}>
-              NASA & ISRO EARTH OBSERVATORIES
+              NASA EARTH OBSERVATORY FLEET
             </span>
             <span className="text-xs status-good px-2 py-0.5 rounded-full font-semibold">
               <CheckCircle2 className="inline w-3 h-3 mr-1" />100% Free Public Satellites • Zero API Keys
@@ -127,18 +198,29 @@ export default function NasaGeoMap({ location, nasaObs, soilReading }) {
             {hazardsData?.total_alerts > 0 && (
               <span className="text-xs status-alert px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
                 <AlertTriangle className="w-3 h-3" />
-                {hazardsData.total_alerts} Active Environmental Warnings
+                {hazardsData.total_alerts} Environmental Warnings
               </span>
             )}
           </div>
           <h2 className="text-xl font-bold text-white">Geospatial Farm & Hazard Observatory</h2>
           <p className="text-xs mt-1" style={{ color: '#9ea3b8' }}>
-            Overlaying in-situ farm field coordinates with NASA MODIS, SMAP, GPM IMERG, and ISRO Bhuvan thematic layers.
+            Overlay high-resolution field imagery with NASA MODIS, SMAP, and GPM IMERG microwave satellite sensors.
           </p>
         </div>
 
         {/* Toolbar Controls */}
         <div className="flex flex-wrap items-center gap-2">
+          {/* Recenter Button */}
+          <button
+            onClick={handleRecenter}
+            className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition hover:bg-white/10"
+            style={{ background: '#0f1117', border: '1px solid #2a2d3e', color: '#4f8ef7' }}
+            title="Recenter view on your farm"
+          >
+            <Crosshair className="w-3.5 h-3.5" />
+            <span>Recenter</span>
+          </button>
+
           {/* Basemap picker */}
           <div className="flex items-center gap-1 p-1 rounded-lg" style={{ background: '#0f1117', border: '1px solid #2a2d3e' }}>
             {BASE_MAPS.map(b => (
@@ -183,30 +265,41 @@ export default function NasaGeoMap({ location, nasaObs, soilReading }) {
         </div>
       </div>
 
-      {/* ── Active Overlay Description Banner ────────────── */}
+      {/* ── Active Overlay Details & Opacity Controller ───── */}
       {activeOverlay !== 'none' && (
-        <div className="rounded-lg px-4 py-2.5 flex items-center justify-between text-xs"
+        <div className="rounded-lg px-4 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-md"
              style={{ background: '#111827', border: '1px solid #1f2937' }}>
-          <div className="flex items-center gap-2">
-            <Layers className="w-4 h-4 text-cyan-400" />
+          <div className="flex flex-wrap items-center gap-2">
+            <Layers className="w-4 h-4 text-cyan-400 flex-shrink-0" />
             <span className="font-semibold text-white">{activeOverlayInfo?.label}:</span>
             <span style={{ color: '#9ca3af' }}>{activeOverlayInfo?.desc}</span>
-            <span className="text-[11px] px-2 py-0.5 rounded bg-blue-950 text-blue-300 font-mono">
-              Date: {gibsDate}
-            </span>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-gray-400">Opacity:</span>
-            <input
-              type="range"
-              min="0.2"
-              max="1.0"
-              step="0.05"
-              value={opacity}
-              onChange={e => setOpacity(parseFloat(e.target.value))}
-              className="w-20"
-            />
-            <span className="font-mono text-white text-[11px]">{Math.round(opacity * 100)}%</span>
+
+          {/* Legend and opacity */}
+          <div className="flex items-center gap-4 flex-shrink-0">
+            {activeOverlayInfo?.legend && (
+              <div className="hidden md:flex items-center gap-2.5 text-[11px]">
+                {activeOverlayInfo.legend.map((item, idx) => (
+                  <span key={idx} className="flex items-center gap-1">
+                    <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: item.color }} />
+                    <span className="text-gray-300">{item.label}</span>
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <span className="text-gray-400">Opacity:</span>
+              <input
+                type="range"
+                min="0.15"
+                max="1.0"
+                step="0.05"
+                value={opacity}
+                onChange={e => setOpacity(parseFloat(e.target.value))}
+                className="w-20 cursor-pointer"
+              />
+              <span className="font-mono text-white text-[11px]">{Math.round(opacity * 100)}%</span>
+            </div>
           </div>
         </div>
       )}
@@ -218,88 +311,103 @@ export default function NasaGeoMap({ location, nasaObs, soilReading }) {
         <div className="lg:col-span-2 rounded-xl overflow-hidden relative shadow-2xl" 
              style={{ height: '540px', border: '1px solid #2a2d3e', background: '#0a0c14' }}>
           
-          <MapContainer center={coords} zoom={11} minZoom={3} maxZoom={18} style={{ height: '100%', width: '100%' }} zoomControl={true}>
-            <MapController coords={coords} zoom={11} />
+          <MapContainer 
+            center={[location.lat, location.lon]} 
+            zoom={11} 
+            minZoom={2} 
+            maxZoom={18} 
+            style={{ height: '100%', width: '100%' }} 
+            zoomControl={true}
+          >
+            {/* Stable map controller: only updates view when farm coordinates genuinely change */}
+            <FarmMapController 
+              lat={location.lat} 
+              lon={location.lon} 
+              setMapInstance={setMapInstance} 
+            />
 
-            {/* Base Layer: Esri World Imagery (100% Free, high-res) / Topo / OSM */}
-            <TileLayer url={base.url} attribution={base.attr} maxZoom={18} />
+            {/* Base Layer: Esri World Imagery (High-Res Aerial) / Topo / OSM */}
+            <TileLayer 
+              key={base.id}
+              url={base.url} 
+              attribution={base.attr} 
+              maxZoom={18} 
+            />
 
             {/* 1. NASA GIBS MODIS NDVI Vegetation Index */}
             {activeOverlay === 'modis_ndvi' && (
               <TileLayer
-                url={`https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_NDVI_8Day/default/${gibsDate}/GoogleMapsCompatible_Level8/{z}/{y}/{x}.png`}
+                key="modis_ndvi"
+                url="https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_NDVI_8Day/default/default/GoogleMapsCompatible_Level9/{z}/{y}/{x}.png"
                 attribution="NASA GIBS / Terra MODIS NDVI 8-Day"
                 opacity={opacity}
-                maxZoom={8}
-                minZoom={3}
+                maxNativeZoom={9}
+                maxZoom={18}
+                minZoom={2}
               />
             )}
 
             {/* 2. NASA GIBS Land Surface Temperature (Day LST) */}
             {activeOverlay === 'modis_lst' && (
               <TileLayer
-                url={`https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_Land_Surface_Temp_Day/default/${gibsDate}/GoogleMapsCompatible_Level7/{z}/{y}/{x}.png`}
+                key="modis_lst"
+                url="https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_Land_Surface_Temp_Day/default/default/GoogleMapsCompatible_Level7/{z}/{y}/{x}.png"
                 attribution="NASA GIBS / Terra MODIS Land Surface Temp"
                 opacity={opacity}
-                maxZoom={7}
-                minZoom={3}
+                maxNativeZoom={7}
+                maxZoom={18}
+                minZoom={2}
               />
             )}
 
             {/* 3. NASA GPM IMERG Precipitation Rate */}
             {activeOverlay === 'gpm_rain' && (
               <TileLayer
-                url={`https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/IMERG_Precipitation_Rate/default/${gibsDate}/GoogleMapsCompatible_Level6/{z}/{y}/{x}.png`}
+                key="gpm_rain"
+                url="https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/IMERG_Precipitation_Rate/default/default/GoogleMapsCompatible_Level6/{z}/{y}/{x}.png"
                 attribution="NASA GIBS / GPM IMERG 24hr Rain Rate"
                 opacity={opacity}
-                maxZoom={6}
-                minZoom={3}
+                maxNativeZoom={6}
+                maxZoom={18}
+                minZoom={2}
               />
             )}
 
             {/* 4. NASA SMAP Surface Soil Moisture */}
             {activeOverlay === 'smap_moist' && (
               <TileLayer
-                url={`https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/SMAP_L4_Analyzed_Surface_Soil_Moisture/default/${gibsDate}/GoogleMapsCompatible_Level7/{z}/{y}/{x}.png`}
+                key="smap_moist"
+                url="https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/SMAP_L4_Analyzed_Surface_Soil_Moisture/default/default/GoogleMapsCompatible_Level6/{z}/{y}/{x}.png"
                 attribution="NASA GIBS / SMAP Analyzed Surface Soil Moisture"
                 opacity={opacity}
-                maxZoom={7}
-                minZoom={3}
+                maxNativeZoom={6}
+                maxZoom={18}
+                minZoom={2}
               />
             )}
 
             {/* 5. NASA MODIS True Color Reflectance */}
             {activeOverlay === 'modis_color' && (
               <TileLayer
-                url={`https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_CorrectedReflectance_TrueColor/default/${gibsDate}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`}
+                key="modis_color"
+                url="https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_CorrectedReflectance_TrueColor/default/default/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg"
                 attribution="NASA GIBS / Terra MODIS Corrected Reflectance True Color"
                 opacity={opacity}
-                maxZoom={9}
-                minZoom={4}
-              />
-            )}
-
-            {/* 6. ISRO Bhuvan Land Use / Land Cover (WMS) */}
-            {activeOverlay === 'isro_lulc' && (
-              <WMSTileLayer
-                url="https://bhuvan-vec1.nrsc.gov.in/bhuvan/gwc/service/wms"
-                layers="lulc:LULC50K_1516"
-                format="image/png"
-                transparent={true}
-                opacity={opacity}
-                attribution="ISRO / NRSC Bhuvan Thematic Geoportal"
+                maxNativeZoom={9}
+                maxZoom={18}
+                minZoom={2}
               />
             )}
 
             {/* Farm 2.5km Root-Zone Radius Circle */}
             <Circle
-              center={coords}
+              center={[location.lat, location.lon]}
               radius={2500}
               pathOptions={{ color: '#4f8ef7', fillColor: '#4f8ef7', fillOpacity: 0.10, weight: 2, dashArray: '6, 5' }}
             />
 
             {/* Farm Location Marker */}
-            <Marker position={coords} icon={farmIcon}>
+            <Marker position={[location.lat, location.lon]} icon={farmIcon}>
               <Popup>
                 <div style={{ fontFamily: 'Inter, sans-serif', minWidth: 180 }}>
                   <div style={{ fontWeight: 800, fontSize: 13, color: '#0f172a' }}>{location.name}</div>
@@ -323,13 +431,13 @@ export default function NasaGeoMap({ location, nasaObs, soilReading }) {
                     <Circle
                       center={[h.lat, h.lon]}
                       radius={h.radius_km * 1000}
-                      pathOptions={{ color: '#ec4899', fillColor: '#ec4899', fillOpacity: 0.12, weight: 2, dashArray: '8, 6' }}
+                      pathOptions={{ color: h.color || '#ec4899', fillColor: h.color || '#ec4899', fillOpacity: 0.12, weight: 2, dashArray: '8, 6' }}
                     />
                   )}
                   <Marker position={[h.lat, h.lon]} icon={isCyclone ? cycloneIcon : fireIcon}>
                     <Popup>
                       <div style={{ fontFamily: 'Inter, sans-serif', minWidth: 170 }}>
-                        <div style={{ fontWeight: 800, fontSize: 12, color: isCyclone ? '#db2777' : '#ea580c' }}>
+                        <div style={{ fontWeight: 800, fontSize: 12, color: h.color || '#db2777' }}>
                           {h.title}
                         </div>
                         <div style={{ fontSize: 11, color: '#64748b', marginTop: 3 }}>
@@ -350,10 +458,10 @@ export default function NasaGeoMap({ location, nasaObs, soilReading }) {
                   style={{ background: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(4px)', color: '#fff', border: '1px solid #334155' }}>
               🎯 Farm Radius: 2.5 km
             </span>
-            {showHazardLayer && (
-              <span className="px-2.5 py-1 rounded-md text-[11px] font-bold shadow-lg text-rose-300"
-                    style={{ background: 'rgba(76, 5, 25, 0.85)', backdropFilter: 'blur(4px)', border: '1px solid #9f1239' }}>
-                🌀 {hazardsData?.active_cyclones_count ?? 0} Storms / Cyclones Tracked
+            {activeOverlay !== 'none' && (
+              <span className="px-2.5 py-1 rounded-md text-[11px] font-bold shadow-lg text-cyan-300"
+                    style={{ background: 'rgba(6, 78, 59, 0.85)', backdropFilter: 'blur(4px)', border: '1px solid #065f46' }}>
+                🛰 {activeOverlayInfo?.label.split('(')[0]} Active
               </span>
             )}
           </div>
@@ -366,14 +474,14 @@ export default function NasaGeoMap({ location, nasaObs, soilReading }) {
           <div className="rounded-xl p-4" style={{ background: '#1a1d27', border: '1px solid #2a2d3e' }}>
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
-                <Shield className="w-4 h-4 text-amber-400" />
+                <Shield className="w-4 h-4 text-emerald-400" />
                 <h3 className="text-sm font-bold text-white">Active Hazard Alerts</h3>
               </div>
               <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                 hazardsData?.overall_status === 'EMERGENCY' ? 'status-alert' :
                 hazardsData?.overall_status === 'WARNING'   ? 'status-warn'  : 'status-good'
               }`}>
-                {hazardsData?.overall_status || 'ALL CLEAR'}
+                {hazardsData?.overall_status || 'ALL CLEAR / NORMAL'}
               </span>
             </div>
 
@@ -390,7 +498,7 @@ export default function NasaGeoMap({ location, nasaObs, soilReading }) {
                 ))
               ) : (
                 <div className="text-xs py-3 text-center" style={{ color: '#6b7194' }}>
-                  No active weather or fire hazards near your coordinates.
+                  ✅ No active weather or fire hazards near your farm coordinates.
                 </div>
               )}
             </div>
