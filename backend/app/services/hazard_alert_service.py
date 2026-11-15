@@ -8,7 +8,7 @@ Hazard Alert Service — Monitors NASA & global Earth data for active weather ha
 """
 import requests
 import math
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any
 
 class HazardAlertService:
@@ -50,8 +50,9 @@ class HazardAlertService:
 
     def _fetch_tropical_cyclones(self, lat: float, lon: float) -> List[Dict]:
         """
-        Query GDACS (Global Disaster Alert and Coordination System - Free JSON)
-        for active Tropical Cyclones worldwide.
+        Query GDACS (Global Disaster Alert and Coordination System) and NOAA NHC
+        for strictly ACTIVE, ongoing Tropical Cyclones worldwide.
+        Filters out historical, ended, or dissipated storms.
         """
         cyclones = []
         try:
@@ -64,7 +65,48 @@ class HazardAlertService:
                     props = f.get("properties", {})
                     geom = f.get("geometry", {})
                     coords = geom.get("coordinates", [0, 0])
+                    if not coords or len(coords) < 2:
+                        continue
                     c_lon, c_lat = coords[0], coords[1]
+
+                    # 1. STRICT ACTIVE CHECK: Must be actively ongoing
+                    is_current = str(props.get("iscurrent", "")).strip().lower() == "true"
+                    if not is_current:
+                        continue
+
+                    # 2. Check end date (todate) - must not be in the past
+                    todate_str = props.get("todate", "")
+                    if todate_str:
+                        try:
+                            end_dt = datetime.fromisoformat(todate_str.replace("Z", "+00:00"))
+                            if end_dt.tzinfo is None:
+                                end_dt = end_dt.replace(tzinfo=timezone.utc)
+                            if end_dt < datetime.now(timezone.utc) - timedelta(hours=12):
+                                continue
+                        except Exception:
+                            pass
+
+                    name = props.get("name", "Tropical Storm")
+                    event_type = props.get("eventtype", "").upper()
+                    alert_level = props.get("alertlevel", "Green")
+
+                    # Extract accurate wind speed
+                    wind_speed = props.get("windspeed")
+                    if wind_speed is None:
+                        sev_data = props.get("severitydata", {})
+                        if isinstance(sev_data, dict):
+                            wind_speed = sev_data.get("severity", 0)
+                        else:
+                            wind_speed = 0
+                    try:
+                        wind_speed = round(float(wind_speed), 1)
+                    except (ValueError, TypeError):
+                        wind_speed = 0
+
+                    # Strictly filter for tropical cyclones / storms / depressions
+                    is_tc = (event_type == "TC") or any(k in name.lower() for k in ["cyclone", "hurricane", "typhoon", "tropical storm", "depression", "storm"])
+                    if not is_tc:
+                        continue
 
                     # Compute distance to farm
                     dlat = math.radians(c_lat - lat)
@@ -72,24 +114,14 @@ class HazardAlertService:
                     a = math.sin(dlat / 2)**2 + math.cos(math.radians(lat)) * math.cos(math.radians(c_lat)) * math.sin(dlon / 2)**2
                     dist_km = 6371.0 * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
-                    name = props.get("name", "Tropical Storm")
-                    event_type = props.get("eventtype", "").upper()
-                    alert_level = props.get("alertlevel", "Green")
-                    wind_speed = props.get("windspeed", 0)
-
-                    # Strictly filter for tropical cyclones / storms / depressions
-                    is_tc = (event_type == "TC") or any(k in name.lower() for k in ["cyclone", "hurricane", "typhoon", "tropical storm", "depression", "storm"])
-                    if not is_tc:
-                        continue
-
                     # Include if within 3,500 km for regional map tracking
                     if dist_km < 3500:
                         if dist_km < 250:
                             severity = "emergency"
-                            impact = f"IMMEDIATE DANGER: {name} is within {round(dist_km)} km of your farm! High wind and flash flood hazard."
+                            impact = f"IMMEDIATE DANGER: {name} is within {round(dist_km)} km of your farm! High wind ({wind_speed} km/h) and flash flood hazard."
                         elif dist_km < 600:
                             severity = "warning"
-                            impact = f"REGIONAL WARNING: {name} is {round(dist_km)} km away. Peripheral rain bands may cause sudden squalls."
+                            impact = f"REGIONAL WARNING: {name} is {round(dist_km)} km away ({wind_speed} km/h). Peripheral rain bands may cause sudden squalls."
                         else:
                             severity = "distant_basin"
                             impact = f"Distant marine system: {name} is {round(dist_km)} km away in oceanic basin. No direct destructive impact on your farm."
@@ -106,6 +138,40 @@ class HazardAlertService:
                         })
         except Exception as e:
             print(f"[GDACS Cyclone Warning] {e}")
+
+        # Secondary check: NOAA NHC (National Hurricane Center - Free JSON)
+        try:
+            nhc_url = "https://www.nhc.noaa.gov/CurrentStorms.json"
+            r_nhc = requests.get(nhc_url, timeout=5)
+            if r_nhc.status_code == 200:
+                nhc_data = r_nhc.json()
+                for storm in nhc_data.get("activeStorms", []):
+                    s_lat = storm.get("latitude")
+                    s_lon = storm.get("longitude")
+                    s_name = storm.get("name", "Tropical Storm")
+                    s_intensity = storm.get("intensity", 0)  # knots
+                    try:
+                        s_kmh = round(float(s_intensity) * 1.852, 1)
+                    except (ValueError, TypeError):
+                        s_kmh = 0
+                    if s_lat is not None and s_lon is not None:
+                        dlat = math.radians(s_lat - lat)
+                        dlon = math.radians(s_lon - lon)
+                        a = math.sin(dlat / 2)**2 + math.cos(math.radians(lat)) * math.cos(math.radians(s_lat)) * math.sin(dlon / 2)**2
+                        d_km = 6371.0 * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+                        if d_km < 3500:
+                            cyclones.append({
+                                "lat": s_lat,
+                                "lon": s_lon,
+                                "name": f"Tropical Storm {s_name}",
+                                "alert_level": "Orange" if s_kmh > 100 else "Yellow",
+                                "wind_speed_kmh": s_kmh,
+                                "distance_km": round(d_km, 1),
+                                "severity": "emergency" if d_km < 250 else ("warning" if d_km < 600 else "distant_basin"),
+                                "impact": f"Active tropical system {s_name} tracked by NOAA NHC ({s_kmh} km/h wind speed)."
+                            })
+        except Exception as e:
+            print(f"[NOAA NHC Warning] {e}")
 
         return cyclones
 
