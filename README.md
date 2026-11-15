@@ -195,7 +195,7 @@ sudo apt install -y nodejs
 
 #### Step 1: Clone Repository
 ```bash
-git clone https://gitlab.com/aditya128-bit/field-shift-nasa-2026.git
+git clone https://gitlab.com/Aditya99880/field-shift-nasa-2026.git
 cd field-shift-nasa-2026
 ```
 
@@ -257,7 +257,7 @@ Open **PowerShell** as Administrator or current user and run:
 
 ```powershell
 # 1. Clone repository & enter project folder
-git clone https://gitlab.com/aditya128-bit/field-shift-nasa-2026.git
+git clone https://gitlab.com/Aditya99880/field-shift-nasa-2026.git
 cd field-shift-nasa-2026
 
 # 2. Enable script execution (only needed once if scripts are blocked)
@@ -312,7 +312,7 @@ A presentation deck ready for academic conferences, hackathon judging, and peer 
 
 - **LaTeX Source Code**: [`docs/presentation/field_shift_presentation.tex`](file:///docs/presentation/field_shift_presentation.tex)
 - **Compiled Slide Deck (PDF)**: [`docs/presentation/field_shift_presentation.pdf`](file:///docs/presentation/field_shift_presentation.pdf)
-- **GitLab Repository**: [https://gitlab.com/aditya128-bit/field-shift-nasa-2026](https://gitlab.com/aditya128-bit/field-shift-nasa-2026)
+- **GitLab Repository**: [https://gitlab.com/Aditya99880/field-shift-nasa-2026](https://gitlab.com/Aditya99880/field-shift-nasa-2026)
 
 ### Presentation Topics Covered:
 1. **Challenge Context & Mission**: Author Sadie Burnett Boudro (NASA JSC Artemis & Freedom Space Reactor team) and SME evaluation criteria.
