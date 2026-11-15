@@ -39,9 +39,15 @@ function FarmMapController({ lat, lon, setMapInstance }) {
 const BASE_MAPS = [
   { 
     id: 'satellite', 
-    label: '🛰 High-Res Satellite', 
+    label: '🛰 High-Res Satellite (0.5m)', 
     url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', 
     attr: 'Tiles © Esri — Source: Esri, USDA, USGS' 
+  },
+  { 
+    id: 'modis_color', 
+    label: '🌍 NASA MODIS Earth (250m)', 
+    url: 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_L3_SurfaceReflectance_Bands143_8Day/default/default/GoogleMapsCompatible_Level8/{z}/{y}/{x}.jpeg', 
+    attr: 'NASA GIBS / Terra MODIS 8-Day True Color' 
   },
   { 
     id: 'topo', 
@@ -51,7 +57,7 @@ const BASE_MAPS = [
   },
   { 
     id: 'osm', 
-    label: '🌍 OpenStreetMap', 
+    label: '🌐 OpenStreetMap', 
     url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', 
     attr: '© OpenStreetMap contributors' 
   },
@@ -67,7 +73,7 @@ const OVERLAYS = [
   { 
     id: 'live_radar', 
     label: '🌧 Live Weather Doppler Radar & Rain Clouds', 
-    desc: 'Global real-time Doppler weather radar tracking live storm clouds and squalls (100% seamless, zero cutoffs)',
+    desc: 'Global real-time Doppler weather radar tracking live storm clouds & rain squalls (seamlessly upscaled)',
     legend: [
       { color: '#0284c7', label: 'Light Rain (1-5 mm/hr)' },
       { color: '#eab308', label: 'Moderate Rain (5-15 mm/hr)' },
@@ -75,19 +81,9 @@ const OVERLAYS = [
     ]
   },
   { 
-    id: 'modis_color', 
-    label: '🌍 NASA MODIS 8-Day Global Earth Composite', 
-    desc: 'Continuous 8-day satellite true-color composite across entire Earth (zero orbital swaths, zero seams)',
-    legend: [
-      { color: '#22c55e', label: 'Vegetation / Forest' },
-      { color: '#d97706', label: 'Cropland / Arid' },
-      { color: '#3b82f6', label: 'Oceans / Lakes' }
-    ]
-  },
-  { 
     id: 'modis_ndvi', 
-    label: '🌱 NASA MODIS 8-Day Crop Biomass (NDVI)', 
-    desc: 'Global seamless 8-day composite: crop canopy vigor & biomass vitality (no swaths/gaps)',
+    label: '🌱 NASA MODIS Crop Biomass Vitality (NDVI)', 
+    desc: 'Global seamless 8-day composite: crop canopy vigor & photosynthetic biomass',
     legend: [
       { color: '#006400', label: 'Dense Canopy (NDVI > 0.6)' },
       { color: '#90ee90', label: 'Moderate Vigor (0.3 - 0.6)' },
@@ -96,8 +92,8 @@ const OVERLAYS = [
   },
   { 
     id: 'modis_lst', 
-    label: '🌡 NASA MODIS 8-Day Thermal Surface Temperature', 
-    desc: 'Thermal crop heat stress & ground heating (global seamless composite, no tile cutoffs)',
+    label: '🌡 NASA MODIS Thermal Surface Temperature', 
+    desc: 'Thermal crop heat stress & ground heating (semi-transparent thermal overlay)',
     legend: [
       { color: '#3b82f6', label: 'Cool (< 25°C)' },
       { color: '#22c55e', label: 'Optimal (25-32°C)' },
@@ -110,7 +106,7 @@ const OVERLAYS = [
 export default function NasaGeoMap({ location, nasaObs, soilReading }) {
   const [baseMap, setBaseMap] = useState('satellite');
   const [activeOverlay, setActiveOverlay] = useState('none');
-  const [opacity, setOpacity] = useState(0.70);
+  const [opacity, setOpacity] = useState(0.40);
   const [hazardsData, setHazardsData] = useState(null);
   const [showHazardLayer, setShowHazardLayer] = useState(true);
   const [mapInstance, setMapInstance] = useState(null);
@@ -221,7 +217,10 @@ export default function NasaGeoMap({ location, nasaObs, soilReading }) {
           {/* Quick Zoom Buttons */}
           <div className="flex items-center gap-1 p-1 rounded-lg" style={{ background: '#0f1117', border: '1px solid #2a2d3e' }}>
             <button
-              onClick={() => mapInstance?.flyTo([location.lat, location.lon], 14, { duration: 1.0 })}
+              onClick={() => {
+                mapInstance?.flyTo([location.lat, location.lon], 14, { duration: 1.0 });
+                if (activeOverlay !== 'none') setOpacity(0.35);
+              }}
               className="px-2 py-1 rounded text-xs font-semibold text-blue-400 hover:bg-white/10 transition"
               title="Zoom directly to 0.5-meter aerial field boundary"
             >
@@ -321,11 +320,11 @@ export default function NasaGeoMap({ location, nasaObs, soilReading }) {
               </div>
             )}
             <div className="flex items-center gap-2">
-              <span className="text-gray-400">Opacity:</span>
+              <span className="text-gray-400">Overlay Blending:</span>
               <input
                 type="range"
-                min="0.15"
-                max="1.0"
+                min="0.10"
+                max="0.75"
                 step="0.05"
                 value={opacity}
                 onChange={e => setOpacity(parseFloat(e.target.value))}
@@ -359,32 +358,34 @@ export default function NasaGeoMap({ location, nasaObs, soilReading }) {
               setMapInstance={setMapInstance} 
             />
 
-            {/* Base Layer: Esri World Imagery (High-Res Aerial) / Topo / OSM */}
+            {/* Base Layer: Esri World Imagery (0.5m High-Res) / NASA MODIS / Topo / OSM */}
             <TileLayer 
               key={base.id}
               url={base.url} 
               attribution={base.attr} 
+              maxNativeZoom={base.id === 'modis_color' ? 8 : 18}
               maxZoom={18} 
             />
 
-            {/* 1. Live Weather Doppler Radar & Cloud Squalls (Real-Time RainViewer - 100% Seamless) */}
+            {/* 1. Live Weather Doppler Radar & Cloud Squalls (Real-Time RainViewer - Fixed maxNativeZoom=7 so NO 'Zoom Not Supported' tiles) */}
             {activeOverlay === 'live_radar' && radarPath && (
               <TileLayer
                 key={`live_radar_${radarPath}`}
                 url={`https://tilecache.rainviewer.com${radarPath}/256/{z}/{x}/{y}/2/1_1.png`}
                 attribution="Live Doppler Radar & Cloud Squalls © RainViewer"
                 opacity={opacity}
+                maxNativeZoom={7}
                 maxZoom={18}
                 minZoom={2}
               />
             )}
 
-            {/* 2. NASA MODIS 8-Day Global Earth Composite (Seamless - No Swaths/Gaps) */}
-            {activeOverlay === 'modis_color' && (
+            {/* 2. NASA GIBS MODIS NDVI Vegetation Index (Seamless 8-Day) */}
+            {activeOverlay === 'modis_ndvi' && (
               <TileLayer
-                key="modis_color"
-                url="https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_L3_SurfaceReflectance_Bands143_8Day/default/default/GoogleMapsCompatible_Level8/{z}/{y}/{x}.jpeg"
-                attribution="NASA GIBS / Terra MODIS Seamless 8-Day True Color"
+                key="modis_ndvi"
+                url="https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_NDVI_8Day/default/default/GoogleMapsCompatible_Level9/{z}/{y}/{x}.png"
+                attribution="NASA GIBS / Terra MODIS NDVI 8-Day"
                 opacity={opacity}
                 maxNativeZoom={8}
                 maxZoom={18}
@@ -392,20 +393,7 @@ export default function NasaGeoMap({ location, nasaObs, soilReading }) {
               />
             )}
 
-            {/* 3. NASA GIBS MODIS NDVI Vegetation Index (Seamless 8-Day) */}
-            {activeOverlay === 'modis_ndvi' && (
-              <TileLayer
-                key="modis_ndvi"
-                url="https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_NDVI_8Day/default/default/GoogleMapsCompatible_Level9/{z}/{y}/{x}.png"
-                attribution="NASA GIBS / Terra MODIS NDVI 8-Day"
-                opacity={opacity}
-                maxNativeZoom={9}
-                maxZoom={18}
-                minZoom={2}
-              />
-            )}
-
-            {/* 4. NASA GIBS Land Surface Temperature (Seamless 8-Day Composite - No Patches/Cutoffs) */}
+            {/* 3. NASA GIBS Land Surface Temperature (Seamless 8-Day Composite - Semi-Transparent) */}
             {activeOverlay === 'modis_lst' && (
               <TileLayer
                 key="modis_lst"
