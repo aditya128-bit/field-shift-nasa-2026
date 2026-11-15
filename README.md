@@ -140,54 +140,208 @@ Every query feeds:
 
 ---
 
-## 🚀 6. Installation & Quick Start
+## 🚀 6. Installation & Setup Guide (Windows & Ubuntu Linux)
 
-### Prerequisites:
-- Python 3.10+ (or `uv`)
-- Node.js 18+ and npm
+FIELD SHIFT is designed for immediate zero-friction deployment. It runs **100% free and open source with zero API keys required**. All NASA satellite feeds (POWER, SMAP, GPM, MODIS, GRACE, SRTM) and live Doppler radar are public endpoints.
 
-### Step 1: Clone Repository & Virtual Environment
+---
+
+### ⚙️ Dummy Environment Configuration (`.env.example` / `.env.dummy`)
+
+A pre-configured dummy environment template is provided in both [`.env.example`](file:///.env.example) and [`.env.dummy`](file:///.env.dummy):
+
+```ini
+# --- Server Network Configuration ---
+HOST=0.0.0.0
+PORT=8000
+
+# --- Default Farm Coordinates (Indo-Gangetic Basin) ---
+DEFAULT_LAT=28.6139
+DEFAULT_LON=77.2090
+LOCATION_NAME="Delhi Indo-Gangetic Basin (IARI Pusa / Najafgarh)"
+
+# --- Physical RS485 Modbus Sensor Port ---
+# Linux / Ubuntu default: /dev/ttyUSB0
+# Windows default: COM3 or COM4 (Check Windows Device Manager -> Ports)
+RS485_PORT=/dev/ttyUSB0
+RS485_BAUDRATE=9600
+
+# --- Simulated 8-in-1 IoT Telemetry Cadence ---
+# When physical hardware is unattached, backend auto-simulates live soil telemetry:
+SENSOR_SIMULATION_INTERVAL=5
+
+# --- Optional AI Agronomist Key (NVIDIA NIM) ---
+# OPTIONAL: System has built-in offline agronomist intelligence with zero keys!
+# Free cloud LLM key can be obtained from: https://build.nvidia.com/
+NVIDIA_API_KEY=
+NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
+NVIDIA_MODEL=google/gemma-4-31b-it
+```
+
+---
+
+### 🐧 Ubuntu / Debian Linux Setup Guide
+
+#### Prerequisites:
+Ensure Python 3.10+, pip, venv, and Node.js 18+ are installed:
 ```bash
-git clone https://github.com/your-username/NASA-Field-Shift.git
-cd NASA-Field-Shift
+sudo apt update
+sudo apt install -y python3 python3-pip python3-venv git curl
 
-# Create virtual environment and install packages
-uv venv .venv
+# Install Node.js 20 LTS (if not already installed)
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs
+```
+
+#### Step 1: Clone Repository
+```bash
+git clone https://gitlab.com/aditya128-bit/field-shift-nasa-2026.git
+cd field-shift-nasa-2026
+```
+
+#### Step 2: One-Command Quick Launch (Recommended)
+We provide an automated, all-in-one setup and launch script:
+```bash
+chmod +x start.sh
+./start.sh
+```
+*This script automatically creates `.venv`, installs Python dependencies, copies `.env.example` to `.env`, compiles the frontend, and starts the server at `http://localhost:8000`.*
+
+#### Manual Step-by-Step for Ubuntu:
+```bash
+# 1. Create and activate Python virtual environment
+python3 -m venv .venv
 source .venv/bin/activate
-uv pip install -r backend/requirements.txt
-```
 
-### Step 2: Configure Environment Variables
-```bash
+# 2. Upgrade pip and install backend dependencies
+pip install --upgrade pip
+pip install -r backend/requirements.txt
+
+# 3. Create .env from dummy template
 cp .env.example .env
-# Optional: Add your NVIDIA NIM API key to .env if desired
-```
 
-### Step 3: Run the Complete Application (Single Command)
-The FastAPI backend serves both the REST API, WebSocket stream, and the compiled React production frontend on port 8000:
-```bash
-.venv/bin/uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
-```
-Now open your browser and navigate to:
-👉 **`http://localhost:8000`**
+# 4. Build production frontend
+cd frontend
+npm install
+npm run build
+cd ..
 
-### Step 4 (Optional): Frontend Development Mode
-If you wish to edit frontend components with live Hot Module Replacement (HMR):
+# 5. Launch FastAPI backend & web dashboard
+uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+Navigate to: 👉 **`http://localhost:8000`**
+
+---
+
+### 🪟 Windows 10 / 11 Setup Guide
+
+#### Prerequisites:
+1. **Python 3.10+**: Download from [python.org](https://www.python.org/downloads/).  
+   > ⚠️ **IMPORTANT**: During installation, check the box **"Add Python to PATH"**!
+2. **Node.js 18+ (LTS)**: Download from [nodejs.org](https://nodejs.org/).
+3. **Git for Windows**: Download from [git-scm.com](https://git-scm.com/).
+
+---
+
+#### Option A: One-Click Launch via Command Prompt (CMD)
+Open Command Prompt in the project folder and run:
+```cmd
+start.bat
+```
+*This script validates Python, creates `.venv`, installs requirements, copies `.env.example`, builds frontend, and starts the uvicorn server on `http://localhost:8000`.*
+
+---
+
+#### Option B: PowerShell Setup (Step-by-Step)
+Open **PowerShell** as Administrator or current user and run:
+
+```powershell
+# 1. Clone repository & enter project folder
+git clone https://gitlab.com/aditya128-bit/field-shift-nasa-2026.git
+cd field-shift-nasa-2026
+
+# 2. Enable script execution (only needed once if scripts are blocked)
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+
+# 3. Create virtual environment
+python -m venv .venv
+
+# 4. Activate virtual environment
+.\.venv\Scripts\Activate.ps1
+
+# 5. Install Python dependencies
+python -m pip install --upgrade pip
+pip install -r backend/requirements.txt
+
+# 6. Copy dummy environment file
+Copy-Item .env.example .env
+
+# 7. Build frontend assets
+cd frontend
+npm install
+npm run build
+cd ..
+
+# 8. Launch the application
+python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+*(Or simply execute `.\start.ps1` from PowerShell!)*
+
+Navigate to: 👉 **`http://localhost:8000`**
+
+---
+
+### 💻 Frontend Development Mode (Hot Module Replacement)
+If you want live hot-reloading while editing React frontend components:
 ```bash
+# Terminal 1: Backend
+uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
+
+# Terminal 2: Frontend (Vite Dev Server)
 cd frontend
 npm install
 npm run dev
 ```
-Open **`http://localhost:3000`** (requests are proxied automatically to port 8000).
+Open **`http://localhost:3000`** (Vite automatically proxies `/api` and `/ws` to port 8000).
 
 ---
 
-## 📂 7. Project Structure
+## 📑 7. Academic Presentation & Dossier (LaTeX Beamer)
+
+A presentation deck ready for academic conferences, hackathon judging, and peer review has been compiled in **LaTeX Beamer**:
+
+- **LaTeX Source Code**: [`docs/presentation/field_shift_presentation.tex`](file:///docs/presentation/field_shift_presentation.tex)
+- **Compiled Slide Deck (PDF)**: [`docs/presentation/field_shift_presentation.pdf`](file:///docs/presentation/field_shift_presentation.pdf)
+- **GitLab Repository**: [https://gitlab.com/aditya128-bit/field-shift-nasa-2026](https://gitlab.com/aditya128-bit/field-shift-nasa-2026)
+
+### Presentation Topics Covered:
+1. **Challenge Context & Mission**: Author Sadie Burnett Boudro (NASA JSC Artemis & Freedom Space Reactor team) and SME evaluation criteria.
+2. **Problem Analysis**: The smallholder crisis — extreme heatwaves, $-3.4\,\text{cm/yr}$ GRACE-FO groundwater drawdown, and bare soil wind erosion.
+3. **End-to-End System Architecture**: Planar non-overlapping TikZ layout linking satellite ingestion, in-situ IoT, FAO-56 physics, dual-mode ML, and farmer HUD.
+4. **NASA Earth Observation Fleet**: Spatial-temporal harmonization across NASA POWER, SMAP, GPM IMERG, MODIS, GRACE-FO, and SRTM onto a $0.01^\circ$ ($\approx 1.1\,\text{km}$) grid.
+5. **Crop Rotation Strategy Comparator**: Comprehensive 3-strategy evaluation (Conventional Monoculture vs. Legume Diversification vs. Climate-Smart Zero-Till).
+6. **Dual-Mode AI & Operational Modes**: Decadal Baseline ($R^2 = 0.9904$), Multi-Window Trajectories (7d, 1m, 2m, 5m, 1y), Real-Time Online Stream SGD (`partial_fit`), Weekly Rolling Checkpoints, and Grounded LLM Profiling.
+7. **Empirical Accuracy & Feature Weights**: $R^2 = 0.9904$, $\text{RMSE} = 0.0094$, $\text{MAE} = 0.0068$, EMA Loss $= 0.000063$, Latency $<1\,\text{ms}$, and online weights ($\beta_i$).
+8. **Weekly Action Plan & Farmer UI**: 7-day operational field cadence, biological soil regeneration recipes (Sunnhemp, Rhizobium, Jeevamrut), and severe hazard tracking.
+
+---
+
+## 📂 8. Project Structure
 
 ```
-NASA/
-├── .env.example                            # Configuration template
-├── README.md                               # Project documentation & dossier
+field-shift-nasa-2026/
+├── .env.example                            # Dummy configuration template
+├── .env.dummy                              # Identical fallback dummy env file
+├── README.md                               # Comprehensive documentation & setup guide
+├── requirements.txt                        # Root Python requirements
+├── start.sh                                # Ubuntu / Linux one-click launcher
+├── start.bat                               # Windows CMD one-click launcher
+├── start.ps1                               # Windows PowerShell one-click launcher
+├── docs/
+│   └── presentation/
+│       ├── field_shift_presentation.tex    # LaTeX Beamer source code (12 slides)
+│       ├── field_shift_presentation.pdf    # Compiled academic PDF slide deck
+│       └── slide-*.png                     # High-res exported slide previews
 ├── firmware/
 │   ├── field_shift_esp32_sensor.ino        # ESP32 + MAX485 Modbus RTU firmware
 │   └── README.md                           # Hardware BOM & wiring guide
@@ -197,7 +351,7 @@ NASA/
 │   ├── build_notebook.py                   # Notebook generator
 │   └── figures/                            # Exported charts (temperature, radar, ML)
 ├── backend/
-│   ├── pyproject.toml                      # Dependencies
+│   ├── requirements.txt                    # Python backend dependencies
 │   └── app/
 │       ├── main.py                         # FastAPI REST & WebSocket server
 │       ├── config.py                       # Settings & environment variables
@@ -211,11 +365,17 @@ NASA/
 │           ├── soil_iot_service.py         # 8-in-1 IoT telemetry engine
 │           ├── rotation_engine.py          # 3-Strategy evaluation & trade-off engine
 │           ├── predictive_models.py        # ML 30-day forward forecaster
+│           ├── multi_window_forecaster.py  # Multi-horizon (7d, 1m, 2m, 5m, 1y) forecaster
+│           ├── online_learning_service.py  # Online adaptive SGDRegressor with partial_fit()
+│           ├── crop_profile_service.py     # Crop profile & stage memory engine
+│           ├── hazard_alert_service.py     # Live active cyclone & FIRMS fire tracker
+│           ├── scientific_engine.py        # FAO-56 Penman-Monteith ET0 water balance
 │           └── nemotron_ai_service.py      # NVIDIA Nemotron AI Agronomist
 └── frontend/
     ├── package.json                        # Vite + React + Tailwind + Leaflet
     ├── index.html                          # Entry HTML
     ├── vite.config.js                      # Vite proxy config
+    ├── dist/                               # Production compiled web assets
     └── src/
         ├── App.jsx                         # Main dashboard application
         ├── index.css                       # Tailwind styles & theme
@@ -224,19 +384,21 @@ NASA/
             ├── Navbar.jsx                  # Header, location & NVIDIA key selector
             ├── SoilTelemetryCard.jsx       # Real-time 8-in-1 gauges & 24h trend charts
             ├── RotationComparator.jsx      # 3-Way rotation strategy studio & radar
-            ├── NasaGeoMap.jsx              # Leaflet map with NASA GIBS overlays
-            ├── ClimateRiskCalendar.jsx     # 30-day forecast & bare-soil timeline
-            ├── ChatbotAdvisor.jsx          # NVIDIA Nemotron conversational advisor
+            ├── NasaGeoMap.jsx              # Leaflet map with NASA GIBS overlays & radar
+            ├── ClimateRiskCalendar.jsx     # Multi-window forecast & bare-soil timeline
+            ├── CropStageTracker.jsx        # Crop stages & rotation history memory
+            ├── ChatbotAdvisor.jsx          # AI Agronomist with live search
             └── HardwareModal.jsx           # ESP32 pinout & test telemetry injector
 ```
 
 ---
 
-## 🛰️ 8. NASA Earth Observations Reference
+## 🛰️ 9. NASA Earth Observations Reference
 
 - **NASA POWER (Agroclimatology)**: [power.larc.nasa.gov](https://power.larc.nasa.gov) - Daily solar radiation, ambient temperature, humidity, and frost metrics.
 - **SMAP (Soil Moisture Active Passive)**: Global surface and root-zone soil wetness estimates.
 - **GPM (Global Precipitation Measurement) & IMERG**: Multi-satellite precipitation accumulation.
 - **Landsat & MODIS/VIIRS**: Normalized Difference Vegetation Index (NDVI) & surface reflectance.
 - **ECOSTRESS**: Land Surface Temperature (LST) and Evapotranspiration stress hotspots.
-- **SRTM**: Topographic elevation and slope runoff characterization.
+- **GRACE & GRACE-FO**: Gravity Recovery and Climate Experiment terrestrial water storage anomalies.
+- **SRTM**: Shuttle Radar Topography Mission digital elevation (30m) and slope runoff characterization.
