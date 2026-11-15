@@ -4,7 +4,7 @@ import json
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, HTTPException, Header, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from typing import Optional, List, Dict, Any
 
 from .config import settings
@@ -370,10 +370,10 @@ async def websocket_telemetry_stream(websocket: WebSocket):
 
 # Mount static frontend build if it exists
 frontend_dist = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../frontend/dist"))
-if os.path.exists(frontend_dist):
+if os.path.exists(frontend_dist) and os.path.exists(os.path.join(frontend_dist, "index.html")):
     app.mount("/assets", StaticFiles(directory=os.path.join(frontend_dist, "assets")), name="assets")
 
-    @app.get("/")
+    @app.api_route("/", methods=["GET", "HEAD"])
     async def serve_index():
         response = FileResponse(os.path.join(frontend_dist, "index.html"))
         response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
@@ -393,4 +393,40 @@ if os.path.exists(frontend_dist):
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
         return response
+else:
+    @app.api_route("/", methods=["GET", "HEAD"])
+    async def fallback_home():
+        return HTMLResponse(content="""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FIELD SHIFT — NASA Agricultural Decision Intelligence System</title>
+    <style>
+        body { background: #0f172a; color: #f8fafc; font-family: system-ui, -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 1.5rem; box-sizing: border-box; }
+        .card { background: #1e293b; padding: 2.5rem; border-radius: 1rem; border: 1px solid #334155; max-width: 620px; text-align: center; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); }
+        h1 { color: #38bdf8; font-size: 1.75rem; margin-top: 0; }
+        p { color: #94a3b8; line-height: 1.6; }
+        .btn { display: inline-block; background: #0284c7; color: white; padding: 0.75rem 1.5rem; border-radius: 0.5rem; text-decoration: none; font-weight: bold; margin: 0.4rem; transition: background 0.2s; }
+        .btn:hover { background: #0369a1; }
+        .code { background: #0f172a; padding: 0.85rem; border-radius: 0.5rem; font-family: monospace; font-size: 0.9rem; text-align: left; color: #4ade80; margin: 1rem 0; border: 1px solid #334155; }
+        .tag { display: inline-block; padding: 0.25rem 0.75rem; border-radius: 9999px; background: rgba(56,189,248,0.15); color: #38bdf8; font-size: 0.75rem; font-weight: bold; margin-bottom: 1rem; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <span class="tag">NASA SPACE APPS 2026</span>
+        <h1>🌾 FIELD SHIFT Backend is Live!</h1>
+        <p>The agricultural decision-support engine, NASA satellite ingestion fleet, and machine learning models are fully operational.</p>
+        <div style="margin: 1.5rem 0;">
+            <a href="/docs" class="btn">Swagger REST Docs</a>
+            <a href="/api/info" class="btn" style="background: #334155;">System Health & API Info</a>
+        </div>
+        <p style="font-size: 0.9rem; color: #cbd5e1; margin-top: 1.5rem;">To launch the interactive React farm map & rotation studio:</p>
+        <div class="code">cd frontend && npm install && npm run build</div>
+        <p style="font-size: 0.8rem; color: #64748b;">Or start Vite live development server: <code>cd frontend && npm run dev</code></p>
+    </div>
+</body>
+</html>
+""")
 

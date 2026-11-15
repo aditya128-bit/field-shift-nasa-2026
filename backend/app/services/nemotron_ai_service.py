@@ -2,21 +2,16 @@ import os
 import re
 import html
 import requests
-from openai import OpenAI
+import urllib.request
+import urllib.parse
 from typing import List, Dict, Any, Optional
 from ..config import settings
 from ..models.schemas import SoilReading, NasaObservation, ChatResponse
 
-import os
-import re
-import html
-import requests
-import urllib.request
-import urllib.parse
-from openai import OpenAI
-from typing import List, Dict, Any, Optional
-from ..config import settings
-from ..models.schemas import SoilReading, NasaObservation, ChatResponse
+try:
+    from openai import OpenAI
+except ImportError:
+    OpenAI = None
 
 def search_live_web(query: str, max_results: int = 4) -> List[Dict[str, str]]:
     """
@@ -320,7 +315,7 @@ SCIENTIFIC OBJECTIVES & AGROMETEOROLOGICAL INSTRUCTIONS:
             crop_name=crop_data.get("name", "Wheat")
         )
 
-        if not api_key:
+        if not api_key or OpenAI is None:
             return self._fallback_agronomic_engine(user_message, soil, nasa, crop_data, crop_history, forecast_data)
 
         try:

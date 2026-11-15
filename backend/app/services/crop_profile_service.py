@@ -8,7 +8,10 @@ import re
 import json
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
-from openai import OpenAI
+try:
+    from openai import OpenAI
+except ImportError:
+    OpenAI = None
 from ..config import settings
 
 # ─── Static crop knowledge base as scientific baseline / fallback ─────────────
@@ -232,7 +235,7 @@ class CropProfileService:
         Query NVIDIA NIM LLM to generate custom scientific thresholds and agrometeorological ranges for any crop.
         """
         api_key = user_key or os.getenv("NVIDIA_API_KEY") or settings.NVIDIA_API_KEY
-        if not api_key:
+        if not api_key or OpenAI is None:
             return None
 
         model_name = os.getenv("NVIDIA_MODEL") or settings.NVIDIA_MODEL or "google/gemma-4-31b-it"
